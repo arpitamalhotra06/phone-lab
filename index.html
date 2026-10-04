@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone Physics Lab: accelerometer</title>
+<style>
+  :root { --bg:#f5f5f2; --fg:#1b1f23; --muted:#5d656d; --line:#cfd3d6; --accent:#0b5cad; --bad:#b3261e; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14181c; --fg:#eceff1; --muted:#9aa4ad; --line:#2d353c; --accent:#6aaeff; --bad:#ff8a80; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:20px; background:var(--bg); color:var(--fg);
+         font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width:520px; margin-inline:auto; }
+  h1 { font-size:1.3rem; margin:0 0 4px; }
+  p { color:var(--muted); margin:0 0 16px; line-height:1.4; }
+  button { font:inherit; font-weight:600; padding:12px 22px; border-radius:8px; border:0;
+           background:var(--accent); color:#fff; cursor:pointer; }
+  button:focus-visible { outline:3px solid var(--fg); outline-offset:2px; }
+  #status { margin:14px 0; min-height:1.4em; }
+  #status.error { color:var(--bad); }
+  table { width:100%; border-collapse:collapse; margin-top:8px; font-variant-numeric: tabular-nums; }
+  td { padding:10px 0; border-bottom:1px solid var(--line); font-size:1.5rem; }
+  td:first-child { color:var(--muted); font-size:1rem; width:40%; }
+  td:last-child { text-align:right; }
+  small { color:var(--muted); display:block; margin-top:14px; }
+</style>
+</head>
+<body>
+  <h1>Accelerometer</h1>
+  <p>Includes gravity. Phone flat on a table: z should read about 9.8 m/s².</p>
+
+  <button id="start">Start</button>
+  <div id="status" role="status"></div>
+
+  <table>
+    <tr><td>x</td><td><span id="x">--</span> m/s²</td></tr>
+    <tr><td>y</td><td><span id="y">--</span> m/s²</td></tr>
+    <tr><td>z</td><td><span id="z">--</span> m/s²</td></tr>
+    <tr><td>|a|</td><td><span id="mag">--</span> m/s²</td></tr>
+    <tr><td>Rate</td><td><span id="rate">--</span> Hz</td></tr>
+  </table>
+  <small>Android and iOS differ in the sign of the readings. Check which way z points when flat.</small>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const statusEl = $("status");
+  let count = 0, lastRateTime = 0;
+
+  function setStatus(msg, isError) {
+    statusEl.textContent = msg;
+    statusEl.className = isError ? "error" : "";
+  }
+
+  function handleMotion(e) {
+    const a = e.accelerationIncludingGravity;
+    if (!a || a.x === null) {
+      setStatus("No accelerometer data. Try another browser or device.", true);
+      return;
+    }
+    $("x").textContent = a.x.toFixed(2);
+    $("y").textContent = a.y.toFixed(2);
+    $("z").textContent = a.z.toFixed(2);
+    $("mag").textContent = Math.sqrt(a.x*a.x + a.y*a.y + a.z*a.z).toFixed(2);
+
+    count++;
+    const now = performance.now();
+    if (now - lastRateTime >= 1000) {
+      $("rate").textContent = Math.round(count * 1000 / (now - lastRateTime));
+      count = 0;
+      lastRateTime = now;
+    }
+  }
+
+  async function start() {
+    if (!window.isSecureContext) {
+      setStatus("Page must be served over HTTPS.", true);
+      return;
+    }
+    if (typeof DeviceMotionEvent === "undefined") {
+      setStatus("This browser has no DeviceMotion support.", true);
+      return;
+    }
+    // iOS 13+ needs a permission request triggered by a tap
+    if (typeof DeviceMotionEvent.requestPermission === "function") {
+      try {
+        const result = await DeviceMotionEvent.requestPermission();
+        if (result !== "granted") {
+          setStatus("Permission denied. On iPhone: Settings > Safari > Motion & Orientation Access.", true);
+          return;
+        }
+      } catch (err) {
+        setStatus("Permission request failed: " + err.message, true);
+        return;
+      }
+    }
+    window.removeEventListener("devicemotion", handleMotion);
+    window.addEventListener("devicemotion", handleMotion);
+    lastRateTime = performance.now();
+    count = 0;
+    setStatus("Running. If numbers stay at --, move the phone.");
+  }
+
+  $("start").addEventListener("click", start);
+</script>
+</body>
+</html>
