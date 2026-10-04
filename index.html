@@ -65,7 +65,7 @@
     <button class="secondary" id="copy">Copy table</button>
     <button class="secondary" id="clear">Clear</button>
   </div>
-  <small>Free fall is detected when |a| (gravity included) drops below the threshold for at least the minimum duration. g = 2h / t². Measure h from where the phone leaves your hand to where it lands. Sample rate is about 60 Hz, so t has a resolution of roughly 0.017 s.</small>
+  <small>Free fall is detected when |a| (gravity included) drops below the threshold for at least the minimum duration. g = 2h / t². Measure h from where the phone leaves your hand to where it lands. After each drop the page ignores the next 1 s so bounces are not counted. Sample rate is about 60 Hz, so t has a resolution of roughly 0.017 s.</small>
 
 <script>
   const $ = id => document.getElementById(id);
@@ -74,6 +74,8 @@
 
   // free-fall detection state
   let falling = false, tStart = 0, minMag = 99, prevMag = null, prevT = null;
+  let lockUntil = 0;           // ignore everything until this time (stops bounces counting)
+  const LOCKOUT_MS = 1000;
   const trials = [];
 
   function setStatus(msg, cls) { statusEl.textContent = msg; statusEl.className = cls || ""; }
@@ -107,6 +109,9 @@
       count = 0; lastRateTime = t;
     }
 
+    // after a recorded drop, ignore bounces for LOCKOUT_MS
+    if (t < lockUntil) { prevMag = mag; prevT = t; return; }
+
     if (!falling && mag < TH && prevMag !== null && prevMag >= TH) {
       // interpolate the moment |a| crossed the threshold on the way down
       tStart = prevT + (t - prevT) * (prevMag - TH) / (prevMag - mag);
@@ -120,7 +125,7 @@
       const dur = tEnd - tStart;
       falling = false;
       $("state").textContent = "idle";
-      if (dur >= MIN) recordTrial(dur / 1000, minMag);
+      if (dur >= MIN) { recordTrial(dur / 1000, minMag); lockUntil = t + LOCKOUT_MS; }
       else setStatus("Ignored a dip of " + Math.round(dur) + " ms (below the minimum).", "");
     }
     prevMag = mag; prevT = t;
@@ -137,7 +142,7 @@
     }
     window.removeEventListener("devicemotion", handleMotion);
     window.addEventListener("devicemotion", handleMotion);
-    lastRateTime = performance.now(); count = 0; prevMag = null; falling = false;
+    lastRateTime = performance.now(); count = 0; prevMag = null; falling = false; lockUntil = 0;
     setStatus("Ready. Hold the phone still, then drop it.");
   }
 
