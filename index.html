@@ -18,7 +18,7 @@
   button { font:inherit; font-weight:600; padding:12px 22px; border-radius:8px; border:0;
            background:var(--accent); color:#fff; cursor:pointer; }
   button.secondary { background:transparent; color:var(--fg); border:1px solid var(--line); padding:8px 14px; }
-  button:focus-visible, input:focus-visible { outline:3px solid var(--fg); outline-offset:2px; }
+  button:focus-visible, input:focus-visible, summary:focus-visible { outline:3px solid var(--fg); outline-offset:2px; }
   #status { margin:14px 0; min-height:1.4em; }
   #status.error { color:var(--bad); }
   #status.ok { color:var(--ok); font-weight:600; }
@@ -33,12 +33,20 @@
   input { font:inherit; padding:8px; width:7em; border-radius:6px; border:1px solid var(--line);
           background:transparent; color:var(--fg); }
   .row { display:flex; gap:16px; flex-wrap:wrap; margin-bottom:12px; }
+  .auto { color:var(--muted); margin:6px 0 0; line-height:1.5; }
+  details { margin-top:14px; }
+  summary { color:var(--muted); cursor:pointer; }
   small { color:var(--muted); display:block; margin-top:10px; line-height:1.4; }
 </style>
 </head>
 <body>
   <h1>Free-fall detector</h1>
-  <p>Tap Start, then drop the phone onto a pillow or bed from about 0.5 m. Do not drop it onto a hard floor.</p>
+  <p>Enter the drop height, tap Start, and hold the phone still for 2 seconds. Then drop it onto a pillow, bed or carpet. Never onto a hard floor.</p>
+
+  <div class="row">
+    <div><label for="height">Drop height (cm)</label><input id="height" type="number" min="5" step="0.1" value="50"></div>
+  </div>
+  <p class="auto">Threshold (auto): <b id="thAuto">--</b> m/s²<br>Min duration (auto): <b id="minAuto">--</b> ms</p>
 
   <button id="start">Start</button>
   <div id="status" role="status"></div>
@@ -49,12 +57,13 @@
     <tr><td>State</td><td><span id="state">idle</span></td></tr>
   </table>
 
-  <h2>Settings</h2>
-  <div class="row">
-    <div><label for="height">Drop height (cm)</label><input id="height" type="number" min="1" step="0.1" value="50"></div>
-    <div><label for="thresh">Threshold (m/s²)</label><input id="thresh" type="number" min="0.5" max="6" step="0.1" value="3"></div>
-    <div><label for="minms">Min duration (ms)</label><input id="minms" type="number" min="20" max="500" step="10" value="100"></div>
-  </div>
+  <details>
+    <summary>Advanced: override the automatic settings</summary>
+    <div class="row" style="margin-top:10px">
+      <div><label for="thManual">Threshold (m/s²)</label><input id="thManual" type="number" min="0.5" max="6" step="0.1" placeholder="auto"></div>
+      <div><label for="minManual">Min duration (ms)</label><input id="minManual" type="number" min="20" max="500" step="10" placeholder="auto"></div>
+    </div>
+  </details>
 
   <h2>Drops</h2>
   <table class="log">
@@ -65,25 +74,60 @@
     <button class="secondary" id="copy">Copy table</button>
     <button class="secondary" id="clear">Clear</button>
   </div>
-  <small>Free fall is detected when |a| (gravity included) drops below the threshold for at least the minimum duration. g = 2h / t². Measure h from where the phone leaves your hand to where it lands. After each drop the page ignores the next 1 s so bounces are not counted. Sample rate is about 60 Hz, so t has a resolution of roughly 0.017 s.</small>
+  <small>
+    Settings are worked out for you. Min duration = 0.6 × √(2h/9.81), so it scales with the drop height.
+    Threshold = 0.5 × the phone's own reading at rest, measured when you tap Start.
+    Free fall is detected when |a| (gravity included) stays below the threshold for at least the min duration.
+    g = 2h / t². After each drop the next 1 s is ignored so bounces are not counted.
+    Sample rate is about 50 to 60 Hz, so t has a resolution of roughly 0.02 s.
+  </small>
 
 <script>
   const $ = id => document.getElementById(id);
   const statusEl = $("status");
-  let count = 0, lastRateTime = 0;
+  const TH_FRACTION = 0.5;      // threshold = this x resting |a|
+  const MIN_FRACTION = 0.6;     // min duration = this x ideal fall time
+  const CAL_MS = 1500;          // how long to hold still
+  const CAL_MAX_SD = 0.4;       // m/s2: more movement than this restarts calibration
+  const LOCKOUT_MS = 1000;      // ignore bounces after a recorded drop
 
-  // free-fall detection state
+  let count = 0, lastRateTime = 0;
   let falling = false, tStart = 0, minMag = 99, prevMag = null, prevT = null;
-  let lockUntil = 0;           // ignore everything until this time (stops bounces counting)
-  const LOCKOUT_MS = 1000;
+  let lockUntil = 0;
+  let calibrating = false, calStart = 0, calSamples = [];
+  let restA = null;             // resting |a| from calibration
   const trials = [];
 
   function setStatus(msg, cls) { statusEl.textContent = msg; statusEl.className = cls || ""; }
 
-  function recordTrial(t, minA) {
-    const h = parseFloat($("height").value) / 100;
+  function heightM() { const h = parseFloat($("height").value); return h > 0 ? h / 100 : NaN; }
+
+  function autoMinMs() {
+    const h = heightM();
+    if (isNaN(h)) return 100;
+    return Math.max(40, MIN_FRACTION * Math.sqrt(2 * h / 9.81) * 1000);
+  }
+  function autoTh() { return restA === null ? null : TH_FRACTION * restA; }
+
+  function currentTh() {
+    const m = parseFloat($("thManual").value);
+    return (m > 0) ? m : autoTh();
+  }
+  function currentMinMs() {
+    const m = parseFloat($("minManual").value);
+    return (m > 0) ? m : autoMinMs();
+  }
+
+  function updateAuto() {
+    const th = autoTh();
+    $("thAuto").textContent = th === null ? "set when you tap Start" : th.toFixed(2);
+    $("minAuto").textContent = Math.round(autoMinMs());
+  }
+
+  function recordTrial(t, minA, th, minMs) {
+    const h = heightM();
     const g = (h > 0 && t > 0) ? (2 * h) / (t * t) : NaN;
-    trials.push({ t, minA, g });
+    trials.push({ t, minA, g, th, minMs });
     render();
     setStatus("Free fall detected: " + t.toFixed(3) + " s", "ok");
   }
@@ -94,13 +138,27 @@
       r.minA.toFixed(2) + "</td><td>" + (isNaN(r.g) ? "--" : r.g.toFixed(2)) + "</td></tr>").join("");
   }
 
+  function finishCalibration(t) {
+    const n = calSamples.length;
+    const mean = calSamples.reduce((s, v) => s + v, 0) / n;
+    const sd = Math.sqrt(calSamples.reduce((s, v) => s + (v - mean) * (v - mean), 0) / n);
+    if (n < 10 || sd > CAL_MAX_SD) {
+      calStart = t; calSamples = [];
+      setStatus("Phone moved. Hold it still and flat.", "error");
+      return;
+    }
+    restA = mean;
+    calibrating = false;
+    prevMag = null; falling = false;
+    updateAuto();
+    setStatus("Ready. Resting |a| = " + mean.toFixed(2) + " m/s². Drop the phone.", "ok");
+  }
+
   function handleMotion(e) {
     const a = e.accelerationIncludingGravity;
     if (!a || a.x === null) { setStatus("No accelerometer data. Try another browser or device.", "error"); return; }
     const mag = Math.sqrt(a.x*a.x + a.y*a.y + a.z*a.z);
     const t = performance.now();
-    const TH = parseFloat($("thresh").value);
-    const MIN = parseFloat($("minms").value);
 
     $("mag").textContent = mag.toFixed(2);
     count++;
@@ -109,24 +167,33 @@
       count = 0; lastRateTime = t;
     }
 
-    // after a recorded drop, ignore bounces for LOCKOUT_MS
+    if (calibrating) {
+      calSamples.push(mag);
+      $("state").textContent = "calibrating";
+      if (t - calStart >= CAL_MS) finishCalibration(t);
+      return;
+    }
+
     if (t < lockUntil) { prevMag = mag; prevT = t; return; }
 
+    const TH = currentTh();
+    const MIN = currentMinMs();
+
     if (!falling && mag < TH && prevMag !== null && prevMag >= TH) {
-      // interpolate the moment |a| crossed the threshold on the way down
       tStart = prevT + (t - prevT) * (prevMag - TH) / (prevMag - mag);
       minMag = mag; falling = true;
       $("state").textContent = "falling";
     } else if (falling && mag < TH) {
       if (mag < minMag) minMag = mag;
     } else if (falling && mag >= TH) {
-      // crossed back up (impact): interpolate the end time
       const tEnd = prevT + (t - prevT) * (TH - prevMag) / (mag - prevMag);
       const dur = tEnd - tStart;
       falling = false;
       $("state").textContent = "idle";
-      if (dur >= MIN) { recordTrial(dur / 1000, minMag); lockUntil = t + LOCKOUT_MS; }
-      else setStatus("Ignored a dip of " + Math.round(dur) + " ms (below the minimum).", "");
+      if (dur >= MIN) { recordTrial(dur / 1000, minMag, TH, MIN); lockUntil = t + LOCKOUT_MS; }
+      else setStatus("Ignored a dip of " + Math.round(dur) + " ms (below the minimum of " + Math.round(MIN) + " ms).", "");
+    } else if (!falling) {
+      $("state").textContent = "idle";
     }
     prevMag = mag; prevT = t;
   }
@@ -142,19 +209,26 @@
     }
     window.removeEventListener("devicemotion", handleMotion);
     window.addEventListener("devicemotion", handleMotion);
-    lastRateTime = performance.now(); count = 0; prevMag = null; falling = false; lockUntil = 0;
-    setStatus("Ready. Hold the phone still, then drop it.");
+    lastRateTime = performance.now(); count = 0;
+    prevMag = null; falling = false; lockUntil = 0;
+    calibrating = true; calStart = performance.now(); calSamples = [];
+    setStatus("Calibrating. Hold the phone still for 2 seconds.");
   }
 
   $("start").addEventListener("click", start);
+  $("height").addEventListener("input", updateAuto);
   $("clear").addEventListener("click", () => { trials.length = 0; render(); setStatus("Cleared."); });
   $("copy").addEventListener("click", async () => {
-    const h = $("height").value;
-    const text = "drop\tt_s\tmin_a\tg\theight_cm=" + h + "\n" +
+    const last = trials[trials.length - 1];
+    const head = "drop\tt_s\tmin_a\tg\theight_cm=" + $("height").value +
+      (last ? "\tthreshold=" + last.th.toFixed(2) + "\tmin_ms=" + Math.round(last.minMs) : "");
+    const text = head + "\n" +
       trials.map((r, i) => (i+1) + "\t" + r.t.toFixed(3) + "\t" + r.minA.toFixed(2) + "\t" + (isNaN(r.g) ? "" : r.g.toFixed(2))).join("\n");
     try { await navigator.clipboard.writeText(text); setStatus("Table copied."); }
     catch (e) { setStatus("Copy failed. Screenshot the table instead.", "error"); }
   });
+
+  updateAuto();
 </script>
 </body>
 </html>
