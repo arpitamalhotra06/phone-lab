@@ -3,105 +3,153 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Phone Physics Lab: accelerometer</title>
+<title>Phone Physics Lab: free fall</title>
 <style>
-  :root { --bg:#f5f5f2; --fg:#1b1f23; --muted:#5d656d; --line:#cfd3d6; --accent:#0b5cad; --bad:#b3261e; }
+  :root { --bg:#f5f5f2; --fg:#1b1f23; --muted:#5d656d; --line:#cfd3d6; --accent:#0b5cad; --bad:#b3261e; --ok:#1e7a3c; }
   @media (prefers-color-scheme: dark) {
-    :root { --bg:#14181c; --fg:#eceff1; --muted:#9aa4ad; --line:#2d353c; --accent:#6aaeff; --bad:#ff8a80; }
+    :root { --bg:#14181c; --fg:#eceff1; --muted:#9aa4ad; --line:#2d353c; --accent:#6aaeff; --bad:#ff8a80; --ok:#7fd99a; }
   }
   * { box-sizing: border-box; }
   body { margin:0; padding:20px; background:var(--bg); color:var(--fg);
          font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width:520px; margin-inline:auto; }
   h1 { font-size:1.3rem; margin:0 0 4px; }
-  p { color:var(--muted); margin:0 0 16px; line-height:1.4; }
+  h2 { font-size:1.05rem; margin:24px 0 8px; }
+  p { color:var(--muted); margin:0 0 14px; line-height:1.4; }
   button { font:inherit; font-weight:600; padding:12px 22px; border-radius:8px; border:0;
            background:var(--accent); color:#fff; cursor:pointer; }
-  button:focus-visible { outline:3px solid var(--fg); outline-offset:2px; }
+  button.secondary { background:transparent; color:var(--fg); border:1px solid var(--line); padding:8px 14px; }
+  button:focus-visible, input:focus-visible { outline:3px solid var(--fg); outline-offset:2px; }
   #status { margin:14px 0; min-height:1.4em; }
   #status.error { color:var(--bad); }
-  table { width:100%; border-collapse:collapse; margin-top:8px; font-variant-numeric: tabular-nums; }
-  td { padding:10px 0; border-bottom:1px solid var(--line); font-size:1.5rem; }
-  td:first-child { color:var(--muted); font-size:1rem; width:40%; }
-  td:last-child { text-align:right; }
-  small { color:var(--muted); display:block; margin-top:14px; }
+  #status.ok { color:var(--ok); font-weight:600; }
+  table { width:100%; border-collapse:collapse; font-variant-numeric: tabular-nums; }
+  .live td { padding:8px 0; border-bottom:1px solid var(--line); font-size:1.4rem; }
+  .live td:first-child { color:var(--muted); font-size:1rem; width:40%; }
+  .live td:last-child { text-align:right; }
+  .log th, .log td { padding:8px 4px; border-bottom:1px solid var(--line); text-align:right; font-size:0.95rem; }
+  .log th:first-child, .log td:first-child { text-align:left; }
+  .log th { color:var(--muted); font-weight:600; }
+  label { display:block; color:var(--muted); margin-bottom:4px; }
+  input { font:inherit; padding:8px; width:7em; border-radius:6px; border:1px solid var(--line);
+          background:transparent; color:var(--fg); }
+  .row { display:flex; gap:16px; flex-wrap:wrap; margin-bottom:12px; }
+  small { color:var(--muted); display:block; margin-top:10px; line-height:1.4; }
 </style>
 </head>
 <body>
-  <h1>Accelerometer</h1>
-  <p>Includes gravity. Phone flat on a table: z should read about 9.8 m/s².</p>
+  <h1>Free-fall detector</h1>
+  <p>Tap Start, then drop the phone onto a pillow or bed from about 0.5 m. Do not drop it onto a hard floor.</p>
 
   <button id="start">Start</button>
   <div id="status" role="status"></div>
 
-  <table>
-    <tr><td>x</td><td><span id="x">--</span> m/s²</td></tr>
-    <tr><td>y</td><td><span id="y">--</span> m/s²</td></tr>
-    <tr><td>z</td><td><span id="z">--</span> m/s²</td></tr>
+  <table class="live">
     <tr><td>|a|</td><td><span id="mag">--</span> m/s²</td></tr>
     <tr><td>Rate</td><td><span id="rate">--</span> Hz</td></tr>
+    <tr><td>State</td><td><span id="state">idle</span></td></tr>
   </table>
-  <small>Android and iOS differ in the sign of the readings. Check which way z points when flat.</small>
+
+  <h2>Settings</h2>
+  <div class="row">
+    <div><label for="height">Drop height (cm)</label><input id="height" type="number" min="1" step="0.1" value="50"></div>
+    <div><label for="thresh">Threshold (m/s²)</label><input id="thresh" type="number" min="0.5" max="6" step="0.1" value="3"></div>
+    <div><label for="minms">Min duration (ms)</label><input id="minms" type="number" min="20" max="500" step="10" value="100"></div>
+  </div>
+
+  <h2>Drops</h2>
+  <table class="log">
+    <thead><tr><th>#</th><th>t (s)</th><th>min |a|</th><th>g (m/s²)</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <div style="margin-top:12px; display:flex; gap:10px;">
+    <button class="secondary" id="copy">Copy table</button>
+    <button class="secondary" id="clear">Clear</button>
+  </div>
+  <small>Free fall is detected when |a| (gravity included) drops below the threshold for at least the minimum duration. g = 2h / t². Measure h from where the phone leaves your hand to where it lands. Sample rate is about 60 Hz, so t has a resolution of roughly 0.017 s.</small>
 
 <script>
   const $ = id => document.getElementById(id);
   const statusEl = $("status");
   let count = 0, lastRateTime = 0;
 
-  function setStatus(msg, isError) {
-    statusEl.textContent = msg;
-    statusEl.className = isError ? "error" : "";
+  // free-fall detection state
+  let falling = false, tStart = 0, minMag = 99, prevMag = null, prevT = null;
+  const trials = [];
+
+  function setStatus(msg, cls) { statusEl.textContent = msg; statusEl.className = cls || ""; }
+
+  function recordTrial(t, minA) {
+    const h = parseFloat($("height").value) / 100;
+    const g = (h > 0 && t > 0) ? (2 * h) / (t * t) : NaN;
+    trials.push({ t, minA, g });
+    render();
+    setStatus("Free fall detected: " + t.toFixed(3) + " s", "ok");
+  }
+
+  function render() {
+    $("rows").innerHTML = trials.map((r, i) =>
+      "<tr><td>" + (i + 1) + "</td><td>" + r.t.toFixed(3) + "</td><td>" +
+      r.minA.toFixed(2) + "</td><td>" + (isNaN(r.g) ? "--" : r.g.toFixed(2)) + "</td></tr>").join("");
   }
 
   function handleMotion(e) {
     const a = e.accelerationIncludingGravity;
-    if (!a || a.x === null) {
-      setStatus("No accelerometer data. Try another browser or device.", true);
-      return;
-    }
-    $("x").textContent = a.x.toFixed(2);
-    $("y").textContent = a.y.toFixed(2);
-    $("z").textContent = a.z.toFixed(2);
-    $("mag").textContent = Math.sqrt(a.x*a.x + a.y*a.y + a.z*a.z).toFixed(2);
+    if (!a || a.x === null) { setStatus("No accelerometer data. Try another browser or device.", "error"); return; }
+    const mag = Math.sqrt(a.x*a.x + a.y*a.y + a.z*a.z);
+    const t = performance.now();
+    const TH = parseFloat($("thresh").value);
+    const MIN = parseFloat($("minms").value);
 
+    $("mag").textContent = mag.toFixed(2);
     count++;
-    const now = performance.now();
-    if (now - lastRateTime >= 1000) {
-      $("rate").textContent = Math.round(count * 1000 / (now - lastRateTime));
-      count = 0;
-      lastRateTime = now;
+    if (t - lastRateTime >= 1000) {
+      $("rate").textContent = Math.round(count * 1000 / (t - lastRateTime));
+      count = 0; lastRateTime = t;
     }
+
+    if (!falling && mag < TH && prevMag !== null && prevMag >= TH) {
+      // interpolate the moment |a| crossed the threshold on the way down
+      tStart = prevT + (t - prevT) * (prevMag - TH) / (prevMag - mag);
+      minMag = mag; falling = true;
+      $("state").textContent = "falling";
+    } else if (falling && mag < TH) {
+      if (mag < minMag) minMag = mag;
+    } else if (falling && mag >= TH) {
+      // crossed back up (impact): interpolate the end time
+      const tEnd = prevT + (t - prevT) * (TH - prevMag) / (mag - prevMag);
+      const dur = tEnd - tStart;
+      falling = false;
+      $("state").textContent = "idle";
+      if (dur >= MIN) recordTrial(dur / 1000, minMag);
+      else setStatus("Ignored a dip of " + Math.round(dur) + " ms (below the minimum).", "");
+    }
+    prevMag = mag; prevT = t;
   }
 
   async function start() {
-    if (!window.isSecureContext) {
-      setStatus("Page must be served over HTTPS.", true);
-      return;
-    }
-    if (typeof DeviceMotionEvent === "undefined") {
-      setStatus("This browser has no DeviceMotion support.", true);
-      return;
-    }
-    // iOS 13+ needs a permission request triggered by a tap
+    if (!window.isSecureContext) { setStatus("Page must be served over HTTPS.", "error"); return; }
+    if (typeof DeviceMotionEvent === "undefined") { setStatus("This browser has no DeviceMotion support.", "error"); return; }
     if (typeof DeviceMotionEvent.requestPermission === "function") {
       try {
         const result = await DeviceMotionEvent.requestPermission();
-        if (result !== "granted") {
-          setStatus("Permission denied. On iPhone: Settings > Safari > Motion & Orientation Access.", true);
-          return;
-        }
-      } catch (err) {
-        setStatus("Permission request failed: " + err.message, true);
-        return;
-      }
+        if (result !== "granted") { setStatus("Permission denied. On iPhone: Settings > Safari > Motion & Orientation Access.", "error"); return; }
+      } catch (err) { setStatus("Permission request failed: " + err.message, "error"); return; }
     }
     window.removeEventListener("devicemotion", handleMotion);
     window.addEventListener("devicemotion", handleMotion);
-    lastRateTime = performance.now();
-    count = 0;
-    setStatus("Running. If numbers stay at --, move the phone.");
+    lastRateTime = performance.now(); count = 0; prevMag = null; falling = false;
+    setStatus("Ready. Hold the phone still, then drop it.");
   }
 
   $("start").addEventListener("click", start);
+  $("clear").addEventListener("click", () => { trials.length = 0; render(); setStatus("Cleared."); });
+  $("copy").addEventListener("click", async () => {
+    const h = $("height").value;
+    const text = "drop\tt_s\tmin_a\tg\theight_cm=" + h + "\n" +
+      trials.map((r, i) => (i+1) + "\t" + r.t.toFixed(3) + "\t" + r.minA.toFixed(2) + "\t" + (isNaN(r.g) ? "" : r.g.toFixed(2))).join("\n");
+    try { await navigator.clipboard.writeText(text); setStatus("Table copied."); }
+    catch (e) { setStatus("Copy failed. Screenshot the table instead.", "error"); }
+  });
 </script>
 </body>
 </html>
