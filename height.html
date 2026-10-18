@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone Physics Lab: drop height</title>
+<style>
+  :root { --bg:#f5f5f2; --fg:#1b1f23; --muted:#5d656d; --line:#cfd3d6; --accent:#0b5cad; --bad:#b3261e; --ok:#1e7a3c; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14181c; --fg:#eceff1; --muted:#9aa4ad; --line:#2d353c; --accent:#6aaeff; --bad:#ff8a80; --ok:#7fd99a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:20px; background:var(--bg); color:var(--fg);
+         font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width:520px; margin-inline:auto; }
+  .back { display:inline-block; margin-bottom:14px; color:var(--accent); text-decoration:none; padding:6px 0; }
+  .back:hover { text-decoration:underline; }
+  h1 { font-size:1.3rem; margin:0 0 4px; }
+  h2 { font-size:1.05rem; margin:24px 0 8px; }
+  p { color:var(--muted); margin:0 0 14px; line-height:1.4; }
+  button { font:inherit; font-weight:600; padding:12px 22px; border-radius:8px; border:0;
+           background:var(--accent); color:#fff; cursor:pointer; }
+  button.secondary { background:transparent; color:var(--fg); border:1px solid var(--line); padding:8px 14px; }
+  button:focus-visible, input:focus-visible, summary:focus-visible { outline:3px solid var(--fg); outline-offset:2px; }
+  #status { margin:14px 0; min-height:1.4em; }
+  #status.error { color:var(--bad); }
+  #status.ok { color:var(--ok); font-weight:600; }
+  table { width:100%; border-collapse:collapse; font-variant-numeric: tabular-nums; }
+  .live td { padding:8px 0; border-bottom:1px solid var(--line); font-size:1.4rem; }
+  .live td:first-child { color:var(--muted); font-size:1rem; width:40%; }
+  .live td:last-child { text-align:right; }
+  .log th, .log td { padding:8px 4px; border-bottom:1px solid var(--line); text-align:right; font-size:0.95rem; }
+  .log th:first-child, .log td:first-child { text-align:left; }
+  .log th { color:var(--muted); font-weight:600; }
+  #summary { margin-top:10px; color:var(--fg); min-height:1.4em; }
+  label { display:block; color:var(--muted); margin-bottom:4px; }
+  input { font:inherit; padding:8px; width:7em; border-radius:6px; border:1px solid var(--line);
+          background:transparent; color:var(--fg); }
+  .row { display:flex; gap:16px; flex-wrap:wrap; margin-bottom:12px; }
+  .auto { color:var(--muted); margin:6px 0 14px; line-height:1.5; }
+  details { margin-top:14px; }
+  summary { color:var(--muted); cursor:pointer; }
+  small { color:var(--muted); display:block; margin-top:10px; line-height:1.4; }
+</style>
+</head>
+<body>
+  <a class="back" href="index.html">&larr; All experiments</a>
+  <h1>Drop height meter</h1>
+  <p>Tap Start and hold the phone still for 2 seconds. Then drop it onto carpet, a bed or a pillow. Never onto a hard floor. The page works out how far it fell from the fall time.</p>
+
+  <p class="auto">Threshold (auto): <b id="thAuto">set when you tap Start</b><br>Min duration: <b id="minAuto">--</b> ms</p>
+
+  <button id="start">Start</button>
+  <div id="status" role="status"></div>
+
+  <table class="live">
+    <tr><td>|a|</td><td><span id="mag">--</span> m/s²</td></tr>
+    <tr><td>Rate</td><td><span id="rate">--</span> Hz</td></tr>
+    <tr><td>State</td><td><span id="state">idle</span></td></tr>
+  </table>
+
+  <details>
+    <summary>Advanced: override the automatic settings</summary>
+    <div class="row" style="margin-top:10px">
+      <div><label for="thManual">Threshold (m/s²)</label><input id="thManual" type="number" min="0.5" max="6" step="0.1" placeholder="auto"></div>
+      <div><label for="minManual">Min duration (ms)</label><input id="minManual" type="number" min="20" max="500" step="10" placeholder="auto"></div>
+    </div>
+  </details>
+
+  <h2>Drops</h2>
+  <table class="log">
+    <thead><tr><th>#</th><th>t (s)</th><th>min |a|</th><th>height (cm)</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <div id="summary"></div>
+  <div style="margin-top:12px; display:flex; gap:10px;">
+    <button class="secondary" id="copy">Copy table</button>
+    <button class="secondary" id="clear">Clear</button>
+  </div>
+  <small>
+    Height = ½ g t², with g = 9.8 m/s² and t the time the phone spent in free fall.
+    Threshold = 0.5 × the phone's own reading at rest, measured when you tap Start.
+    Free fall is detected when |a| (gravity included) stays below the threshold for at least the min duration (150 ms, so drops above about 11 cm).
+    After each drop the next 1 s is ignored so bounces are not counted.
+    Sample rate is about 50 to 60 Hz, so t has a resolution of roughly 0.02 s.
+  </small>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const statusEl = $("status");
+  const G = 9.8;                // m/s2, used to turn fall time into height
+  const TH_FRACTION = 0.5;      // threshold = this x resting |a|
+  const MIN_MS_DEFAULT = 150;   // shortest fall accepted (about 11 cm)
+  const CAL_MS = 1500;          // how long to hold still
+  const CAL_MAX_SD = 0.4;       // m/s2: more movement than this restarts calibration
+  const LOCKOUT_MS = 1000;      // ignore bounces after a recorded drop
+
+  let count = 0, lastRateTime = 0;
+  let falling = false, tStart = 0, minMag = 99, prevMag = null, prevT = null;
+  let lockUntil = 0;
+  let calibrating = false, calStart = 0, calSamples = [];
+  let restA = null;
+  const trials = [];
+
+  function setStatus(msg, cls) { statusEl.textContent = msg; statusEl.className = cls || ""; }
+
+  function autoTh() { return restA === null ? null : TH_FRACTION * restA; }
+  function currentTh() { const m = parseFloat($("thManual").value); return (m > 0) ? m : autoTh(); }
+  function currentMinMs() { const m = parseFloat($("minManual").value); return (m > 0) ? m : MIN_MS_DEFAULT; }
+
+  function updateAuto() {
+    const th = autoTh();
+    $("thAuto").textContent = th === null ? "set when you tap Start" : th.toFixed(2) + " m/s²";
+    $("minAuto").textContent = MIN_MS_DEFAULT;
+  }
+
+  function heightCm(t) { return 0.5 * G * t * t * 100; }
+
+  function recordTrial(t, minA, th, minMs) {
+    trials.push({ t, minA, h: heightCm(t), th, minMs });
+    render();
+    setStatus("Fall time " + t.toFixed(3) + " s, height " + heightCm(t).toFixed(1) + " cm", "ok");
+  }
+
+  function render() {
+    $("rows").innerHTML = trials.map((r, i) =>
+      "<tr><td>" + (i + 1) + "</td><td>" + r.t.toFixed(3) + "</td><td>" +
+      r.minA.toFixed(2) + "</td><td>" + r.h.toFixed(1) + "</td></tr>").join("");
+    const n = trials.length;
+    if (n === 0) { $("summary").textContent = ""; return; }
+    const mean = trials.reduce((s, r) => s + r.h, 0) / n;
+    if (n === 1) { $("summary").textContent = "Mean height: " + mean.toFixed(1) + " cm (1 drop)"; return; }
+    const sd = Math.sqrt(trials.reduce((s, r) => s + (r.h - mean) * (r.h - mean), 0) / (n - 1));
+    $("summary").textContent = "Mean height: " + mean.toFixed(1) + " cm, std dev " + sd.toFixed(1) + " cm (" + n + " drops)";
+  }
+
+  function finishCalibration(t) {
+    const n = calSamples.length;
+    const mean = calSamples.reduce((s, v) => s + v, 0) / n;
+    const sd = Math.sqrt(calSamples.reduce((s, v) => s + (v - mean) * (v - mean), 0) / n);
+    if (n < 10 || sd > CAL_MAX_SD) {
+      calStart = t; calSamples = [];
+      setStatus("Phone moved. Hold it still and flat.", "error");
+      return;
+    }
+    restA = mean;
+    calibrating = false;
+    prevMag = null; falling = false;
+    updateAuto();
+    setStatus("Ready. Resting |a| = " + mean.toFixed(2) + " m/s². Drop the phone.", "ok");
+  }
+
+  function handleMotion(e) {
+    const a = e.accelerationIncludingGravity;
+    if (!a || a.x === null) { setStatus("No accelerometer data. Try another browser or device.", "error"); return; }
+    const mag = Math.sqrt(a.x*a.x + a.y*a.y + a.z*a.z);
+    const t = performance.now();
+
+    $("mag").textContent = mag.toFixed(2);
+    count++;
+    if (t - lastRateTime >= 1000) {
+      $("rate").textContent = Math.round(count * 1000 / (t - lastRateTime));
+      count = 0; lastRateTime = t;
+    }
+
+    if (calibrating) {
+      calSamples.push(mag);
+      $("state").textContent = "calibrating";
+      if (t - calStart >= CAL_MS) finishCalibration(t);
+      return;
+    }
+
+    if (t < lockUntil) { prevMag = mag; prevT = t; return; }
+
+    const TH = currentTh();
+    const MIN = currentMinMs();
+
+    if (!falling && mag < TH && prevMag !== null && prevMag >= TH) {
+      tStart = prevT + (t - prevT) * (prevMag - TH) / (prevMag - mag);
+      minMag = mag; falling = true;
+      $("state").textContent = "falling";
+    } else if (falling && mag < TH) {
+      if (mag < minMag) minMag = mag;
+    } else if (falling && mag >= TH) {
+      const tEnd = prevT + (t - prevT) * (TH - prevMag) / (mag - prevMag);
+      const dur = tEnd - tStart;
+      falling = false;
+      $("state").textContent = "idle";
+      if (dur >= MIN) { recordTrial(dur / 1000, minMag, TH, MIN); lockUntil = t + LOCKOUT_MS; }
+      else setStatus("Ignored a dip of " + Math.round(dur) + " ms (below the minimum of " + Math.round(MIN) + " ms).", "");
+    } else if (!falling) {
+      $("state").textContent = "idle";
+    }
+    prevMag = mag; prevT = t;
+  }
+
+  async function start() {
+    if (!window.isSecureContext) { setStatus("Page must be served over HTTPS.", "error"); return; }
+    if (typeof DeviceMotionEvent === "undefined") { setStatus("This browser has no DeviceMotion support.", "error"); return; }
+    if (typeof DeviceMotionEvent.requestPermission === "function") {
+      try {
+        const result = await DeviceMotionEvent.requestPermission();
+        if (result !== "granted") { setStatus("Permission denied. On iPhone: Settings > Safari > Motion & Orientation Access.", "error"); return; }
+      } catch (err) { setStatus("Permission request failed: " + err.message, "error"); return; }
+    }
+    window.removeEventListener("devicemotion", handleMotion);
+    window.addEventListener("devicemotion", handleMotion);
+    lastRateTime = performance.now(); count = 0;
+    prevMag = null; falling = false; lockUntil = 0;
+    calibrating = true; calStart = performance.now(); calSamples = [];
+    setStatus("Calibrating. Hold the phone still for 2 seconds.");
+  }
+
+  $("start").addEventListener("click", start);
+  $("clear").addEventListener("click", () => { trials.length = 0; render(); setStatus("Cleared."); });
+  $("copy").addEventListener("click", async () => {
+    const last = trials[trials.length - 1];
+    const head = "drop\tt_s\tmin_a\theight_cm\tg=" + G +
+      (last ? "\tthreshold=" + last.th.toFixed(2) + "\tmin_ms=" + Math.round(last.minMs) : "");
+    const text = head + "\n" +
+      trials.map((r, i) => (i+1) + "\t" + r.t.toFixed(3) + "\t" + r.minA.toFixed(2) + "\t" + r.h.toFixed(1)).join("\n");
+    try { await navigator.clipboard.writeText(text); setStatus("Table copied."); }
+    catch (e) { setStatus("Copy failed. Screenshot the table instead.", "error"); }
+  });
+
+  updateAuto();
+</script>
+</body>
+</html>
