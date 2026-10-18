@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone Physics Lab: pendulum period</title>
+<style>
+  :root { --bg:#f5f5f2; --fg:#1b1f23; --muted:#5d656d; --line:#cfd3d6; --accent:#0b5cad; --bad:#b3261e; --ok:#1e7a3c; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14181c; --fg:#eceff1; --muted:#9aa4ad; --line:#2d353c; --accent:#6aaeff; --bad:#ff8a80; --ok:#7fd99a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:20px; background:var(--bg); color:var(--fg);
+         font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width:520px; margin-inline:auto; }
+  .back { display:inline-block; margin-bottom:14px; color:var(--accent); text-decoration:none; padding:6px 0; }
+  .back:hover { text-decoration:underline; }
+  h1 { font-size:1.3rem; margin:0 0 4px; }
+  h2 { font-size:1.05rem; margin:24px 0 8px; }
+  p { color:var(--muted); margin:0 0 14px; line-height:1.4; }
+  ol { color:var(--muted); margin:0 0 14px; padding-left:20px; line-height:1.5; }
+  button { font:inherit; font-weight:600; padding:12px 22px; border-radius:8px; border:0;
+           background:var(--accent); color:#fff; cursor:pointer; }
+  button.secondary { background:transparent; color:var(--fg); border:1px solid var(--line); padding:10px 14px; }
+  button:focus-visible, input:focus-visible, a:focus-visible, summary:focus-visible { outline:3px solid var(--fg); outline-offset:2px; }
+  #status { margin:14px 0; min-height:1.4em; }
+  #status.error { color:var(--bad); }
+  #status.ok { color:var(--ok); font-weight:600; }
+  .btns { display:flex; gap:10px; flex-wrap:wrap; }
+  #view { width:100%; display:block; border-radius:8px; background:#000; margin-top:12px; touch-action:manipulation; }
+  #plot { width:100%; height:90px; display:block; margin-top:8px; border:1px solid var(--line); border-radius:6px; }
+  #vid { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+  table { width:100%; border-collapse:collapse; font-variant-numeric: tabular-nums; }
+  .live td { padding:8px 0; border-bottom:1px solid var(--line); font-size:1.3rem; }
+  .live td:first-child { color:var(--muted); font-size:1rem; width:50%; }
+  .live td:last-child { text-align:right; }
+  .log th, .log td { padding:8px 4px; border-bottom:1px solid var(--line); text-align:right; font-size:0.95rem; }
+  .log th:first-child, .log td:first-child { text-align:left; }
+  .log th { color:var(--muted); font-weight:600; }
+  #summary { margin-top:12px; line-height:1.6; }
+  label { display:block; color:var(--muted); margin-bottom:4px; }
+  input { font:inherit; padding:8px; width:7em; border-radius:6px; border:1px solid var(--line);
+          background:transparent; color:var(--fg); }
+  .swatch { display:inline-block; width:14px; height:14px; border-radius:3px; border:1px solid var(--line); vertical-align:-2px; margin-right:6px; background:transparent; }
+  details { margin-top:14px; }
+  summary { color:var(--muted); cursor:pointer; }
+  small { color:var(--muted); display:block; margin-top:10px; line-height:1.4; }
+</style>
+</head>
+<body>
+  <a class="back" href="index.html">&larr; All experiments</a>
+  <h1>Pendulum period</h1>
+  <p>Point the phone camera at a swinging pendulum. The page tracks the bob and times each full swing.</p>
+  <ol>
+    <li>Make the bob a bright colour (a coloured ball, or a sticker on it). Use a plain background.</li>
+    <li>Prop the phone steady, camera facing the pendulum. The pendulum must swing across the picture, not towards the camera.</li>
+    <li>Tap Start camera, then tap the bob on the picture so the page learns its colour.</li>
+    <li>Pull the bob back about 15° or less and let go.</li>
+  </ol>
+
+  <div style="margin-bottom:14px">
+    <label for="length">String length L (cm), optional</label>
+    <input id="length" type="number" min="5" step="0.1" placeholder="e.g. 50">
+  </div>
+
+  <div class="btns">
+    <button id="start">Start camera</button>
+    <button class="secondary" id="switch">Switch camera</button>
+    <button class="secondary" id="reset">Reset</button>
+  </div>
+  <div id="status" role="status"></div>
+
+  <video id="vid" playsinline muted></video>
+  <canvas id="view" width="320" height="240" aria-label="Camera view. Tap the pendulum bob to track it."></canvas>
+  <canvas id="plot" width="600" height="120" aria-label="Recent position of the bob along its swing"></canvas>
+
+  <table class="live" style="margin-top:12px">
+    <tr><td><span class="swatch" id="swatch"></span>Tracked pixels</td><td><span id="npix">--</span></td></tr>
+    <tr><td>Camera rate</td><td><span id="fps">--</span> fps</td></tr>
+    <tr><td>Swings timed</td><td><span id="nswings">0</span></td></tr>
+    <tr><td>Last T</td><td><span id="lastT">--</span> s</td></tr>
+  </table>
+
+  <h2>Result</h2>
+  <div id="summary">Nothing timed yet.</div>
+
+  <h2>Swings</h2>
+  <table class="log">
+    <thead><tr><th>#</th><th>T (s)</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <div class="btns" style="margin-top:12px">
+    <button class="secondary" id="copy">Copy table</button>
+  </div>
+
+  <details>
+    <summary>Advanced: colour tolerance</summary>
+    <div style="margin-top:10px">
+      <label for="tol">Tolerance (10 to 150). Raise it if the circle only covers part of the bob, lower it if it jumps to the background.</label>
+      <input id="tol" type="number" min="10" max="150" step="5" value="60">
+    </div>
+  </details>
+
+  <small>
+    The video is processed on your phone and is not uploaded or saved.
+    The page finds the bob in each frame, works out the line it swings along, and times the gap between one swing and the next (T).
+    Expected T = 2π√(L/g), with g = 9.8 m/s². This holds for small swings only. A large swing makes T a bit longer.
+    Camera rate is usually 30 fps, so each timing has a resolution of about 0.03 s, but averaging many swings gives a much better value.
+  </small>
+
+<script>
+  // ---- core: finds the bob in a frame, then times each full swing ----
+  function findBlob(data, w, h, tr, tg, tb, tol, prev) {
+    const tol2 = tol * tol;
+    let x0 = 0, x1 = w, y0 = 0, y1 = h;
+    if (prev) {
+      const R = Math.round(0.3 * w);
+      x0 = Math.max(0, Math.round(prev.x - R)); x1 = Math.min(w, Math.round(prev.x + R));
+      y0 = Math.max(0, Math.round(prev.y - R)); y1 = Math.min(h, Math.round(prev.y + R));
+    }
+    let sx = 0, sy = 0, n = 0;
+    for (let y = y0; y < y1; y++) {
+      let i = (y * w + x0) * 4;
+      for (let x = x0; x < x1; x++, i += 4) {
+        const dr = data[i] - tr, dg = data[i + 1] - tg, db = data[i + 2] - tb;
+        if (dr * dr + dg * dg + db * db < tol2) { sx += x; sy += y; n++; }
+      }
+    }
+    return n ? { x: sx / n + 0.5, y: sy / n + 0.5, n: n } : { n: 0 };
+  }
+
+  function makePeriodTracker() {
+    const LEARN_MS = 2000;       // watch this long before choosing the swing line
+    const MIN_AMP = 3;           // px: the bob must move at least this much
+    const MIN_RATIO = 0.75;      // share of the motion that must be along one line
+    const MIN_P = 250, MAX_P = 6000;   // ms: sensible range for one period
+    let buf = [], axis = null, centre = 0;
+    let prevS = null, prevT = null, lastTz = null, sawNeg = false, peak = 0;
+
+    function learn() {
+      const n = buf.length;
+      let mx = 0, my = 0;
+      for (const b of buf) { mx += b.x; my += b.y; }
+      mx /= n; my /= n;
+      let sxx = 0, sxy = 0, syy = 0;
+      for (const b of buf) { const dx = b.x - mx, dy = b.y - my; sxx += dx * dx; sxy += dx * dy; syy += dy * dy; }
+      sxx /= n; sxy /= n; syy /= n;
+      const tr = sxx + syy;
+      const d = Math.sqrt(((sxx - syy) / 2) * ((sxx - syy) / 2) + sxy * sxy);
+      const l1 = tr / 2 + d;
+      let vx, vy;
+      if (Math.abs(sxy) > 1e-9) { vx = l1 - syy; vy = sxy; }
+      else if (sxx >= syy) { vx = 1; vy = 0; }
+      else { vx = 0; vy = 1; }
+      const nv = Math.hypot(vx, vy); vx /= nv; vy /= nv;
+      return { vx: vx, vy: vy, mx: mx, my: my, sd: Math.sqrt(l1), ratio: tr > 0 ? l1 / tr : 0 };
+    }
+
+    function process(t, x, y) {
+      if (axis === null) {
+        buf.push({ t: t, x: x, y: y });
+        while (buf.length && t - buf[0].t > 2.5 * LEARN_MS) buf.shift();
+        if (t - buf[0].t >= LEARN_MS) {
+          const r = learn();
+          if (r.sd >= MIN_AMP) {
+            if (r.ratio >= MIN_RATIO) {
+              axis = [r.vx, r.vy];
+              centre = r.mx * r.vx + r.my * r.vy;
+              prevS = null; lastTz = null; sawNeg = false; peak = r.sd * 1.414;
+              return { type: "axis" };
+            }
+            return { type: "messy" };
+          }
+        }
+        return { type: "waiting" };
+      }
+      const s = x * axis[0] + y * axis[1] - centre;
+      const ev = { type: "track", s: s };
+      peak = Math.max(Math.abs(s), peak * 0.999);
+      const H = Math.max(1.5, 0.35 * peak);
+      if (s < -H) sawNeg = true;
+      if (prevS !== null && prevS < 0 && s >= 0 && sawNeg) {
+        const tz = prevT + (t - prevT) * (0 - prevS) / (s - prevS);
+        sawNeg = false;
+        if (lastTz === null) lastTz = tz;
+        else {
+          const P = tz - lastTz;
+          if (P >= MIN_P) {            // a gap shorter than MIN_P is noise, so ignore it
+            if (P <= MAX_P) ev.period = P / 1000;
+            lastTz = tz;
+          }
+        }
+      }
+      prevS = s; prevT = t;
+      return ev;
+    }
+
+    function reset() { buf = []; axis = null; centre = 0; prevS = null; prevT = null; lastTz = null; sawNeg = false; peak = 0; }
+    return { process: process, reset: reset };
+  }
+  // ---- end core ----
+
+  const $ = id => document.getElementById(id);
+  const G = 9.8;
+  const W = 320, MIN_N = 10, MAXH = 300;
+  let H = 240;
+  const video = $("vid"), canvas = $("view"), ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const tracker = makePeriodTracker();
+  const periods = [], sigHist = [];
+  let stream = null, facing = "environment", running = false;
+  let target = null, prevPos = null, lastData = null;
+  let fpsCount = 0, fpsT = 0, lastDraw = 0;
+
+  function setStatus(msg, cls) { $("status").textContent = msg; $("status").className = cls || ""; }
+  function tol() { const v = parseFloat($("tol").value); return v > 0 ? v : 60; }
+
+  function expectedT() {
+    const L = parseFloat($("length").value);
+    return L > 0 ? 2 * Math.PI * Math.sqrt(L / 100 / G) : null;
+  }
+
+  function render() {
+    $("rows").innerHTML = periods.map((p, i) => "<tr><td>" + (i + 1) + "</td><td>" + p.toFixed(3) + "</td></tr>").join("");
+    $("nswings").textContent = periods.length;
+    const n = periods.length;
+    if (n === 0) { $("summary").textContent = "Nothing timed yet."; return; }
+    const mean = periods.reduce((a, b) => a + b, 0) / n;
+    let html = "Mean T = <b>" + mean.toFixed(3) + " s</b>";
+    if (n > 1) {
+      const sd = Math.sqrt(periods.reduce((a, b) => a + (b - mean) * (b - mean), 0) / (n - 1));
+      html += " (std dev " + sd.toFixed(3) + " s, " + n + " swings)";
+    } else { html += " (1 swing)"; }
+    const T0 = expectedT();
+    if (T0 !== null) {
+      html += "<br>Expected T = " + T0.toFixed(3) + " s. Difference: " + (((mean - T0) / T0) * 100).toFixed(1) + "%";
+    }
+    $("summary").innerHTML = html;
+  }
+
+  function drawPlot() {
+    const c = $("plot"), g = c.getContext("2d"), w = c.width, h = c.height;
+    g.clearRect(0, 0, w, h);
+    if (sigHist.length < 2) return;
+    let m = 1;
+    for (const v of sigHist) m = Math.max(m, Math.abs(v));
+    g.strokeStyle = getComputedStyle(document.body).color;
+    g.lineWidth = 2; g.beginPath();
+    const n = sigHist.length;
+    for (let i = 0; i < n; i++) {
+      const px = w * (i + (MAXH - n)) / (MAXH - 1);
+      const py = h / 2 - (sigHist[i] / m) * (h / 2 - 6);
+      if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
+    }
+    g.stroke();
+  }
+
+  function onFrame(now, meta) {
+    if (!running) return;
+    let t = now;
+    if (meta) {
+      if (typeof meta.captureTime === "number") t = meta.captureTime;
+      else if (typeof meta.presentationTime === "number") t = meta.presentationTime;
+    }
+    ctx.drawImage(video, 0, 0, W, H);
+    const img = ctx.getImageData(0, 0, W, H);
+    lastData = img;
+
+    fpsCount++;
+    if (now - fpsT >= 1000) { $("fps").textContent = Math.round(fpsCount * 1000 / (now - fpsT)); fpsCount = 0; fpsT = now; }
+
+    let blob = null;
+    if (target) {
+      blob = findBlob(img.data, W, H, target.r, target.g, target.b, tol(), prevPos);
+      if (blob.n < MIN_N && prevPos) blob = findBlob(img.data, W, H, target.r, target.g, target.b, tol(), null);
+      if (blob.n >= MIN_N) {
+        prevPos = { x: blob.x, y: blob.y };
+        $("npix").textContent = blob.n;
+        const ev = tracker.process(t, blob.x, blob.y);
+        if (ev.type === "waiting") setStatus("Tracking the bob. Pull it back and let go.");
+        else if (ev.type === "messy") setStatus("Swing it along a straight line, across the picture.", "error");
+        else if (ev.type === "axis") setStatus("Swing detected. Timing each swing.", "ok");
+        else if (ev.type === "track") {
+          sigHist.push(ev.s); if (sigHist.length > MAXH) sigHist.shift();
+          if (ev.period !== undefined) {
+            periods.push(ev.period);
+            $("lastT").textContent = ev.period.toFixed(3);
+            render();
+            setStatus("Timing swings. Last T = " + ev.period.toFixed(3) + " s", "ok");
+          }
+        }
+      } else {
+        prevPos = null; blob = null;
+        $("npix").textContent = "0";
+        setStatus("Lost the bob. Check the colour, or tap the bob again.", "error");
+      }
+    }
+    // overlay (drawn after reading pixels, so it never affects tracking)
+    if (blob) {
+      const r = Math.max(6, Math.sqrt(blob.n / Math.PI));
+      ctx.strokeStyle = "#00e676"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(blob.x, blob.y, r, 0, 2 * Math.PI); ctx.stroke();
+    }
+    if (now - lastDraw > 66) { drawPlot(); lastDraw = now; }
+    schedule();
+  }
+
+  function schedule() {
+    if (!running) return;
+    if (video.requestVideoFrameCallback) video.requestVideoFrameCallback(onFrame);
+    else requestAnimationFrame(now => onFrame(now, null));
+  }
+
+  function stopCamera() {
+    running = false;
+    if (stream) { stream.getTracks().forEach(tr => tr.stop()); stream = null; }
+  }
+
+  async function startCamera() {
+    stopCamera();
+    if (!window.isSecureContext) { setStatus("Page must be served over HTTPS.", "error"); return; }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { setStatus("This browser cannot open the camera.", "error"); return; }
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: facing, width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 60 } },
+        audio: false
+      });
+    } catch (err) {
+      setStatus("Camera blocked or not found (" + err.name + "). Allow camera access for this site and try again.", "error");
+      return;
+    }
+    video.srcObject = stream;
+    await new Promise(res => { if (video.readyState >= 2) res(); else video.onloadeddata = () => res(); });
+    try { await video.play(); } catch (err) { /* autoplay can fail quietly, frames still arrive on most phones */ }
+    const vw = video.videoWidth || 640, vh = video.videoHeight || 480;
+    H = Math.round(W * vh / vw);
+    canvas.width = W; canvas.height = H;
+    running = true; prevPos = null; tracker.reset(); sigHist.length = 0;
+    fpsCount = 0; fpsT = performance.now();
+    setStatus(target ? "Tracking the bob. Pull it back and let go." : "Tap the pendulum bob on the picture.");
+    schedule();
+  }
+
+  function doReset() {
+    periods.length = 0; sigHist.length = 0; tracker.reset(); prevPos = null; render(); drawPlot();
+    $("lastT").textContent = "--";
+    setStatus(running ? "Reset. Pull the bob back and let go." : "Reset.");
+  }
+
+  canvas.addEventListener("click", e => {
+    if (!lastData) return;
+    const rect = canvas.getBoundingClientRect();
+    const cx = Math.round((e.clientX - rect.left) / rect.width * W);
+    const cy = Math.round((e.clientY - rect.top) / rect.height * H);
+    let r = 0, g = 0, b = 0, n = 0;
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+      const x = cx + dx, y = cy + dy;
+      if (x < 0 || y < 0 || x >= W || y >= H) continue;
+      const i = (y * W + x) * 4;
+      r += lastData.data[i]; g += lastData.data[i + 1]; b += lastData.data[i + 2]; n++;
+    }
+    if (!n) return;
+    target = { r: r / n, g: g / n, b: b / n };
+    $("swatch").style.background = "rgb(" + Math.round(target.r) + "," + Math.round(target.g) + "," + Math.round(target.b) + ")";
+    prevPos = null; tracker.reset(); sigHist.length = 0;
+    setStatus("Colour picked. Pull the bob back and let go.", "ok");
+  });
+
+  $("start").addEventListener("click", startCamera);
+  $("switch").addEventListener("click", () => { facing = facing === "environment" ? "user" : "environment"; startCamera(); });
+  $("reset").addEventListener("click", doReset);
+  $("length").addEventListener("input", render);
+  $("copy").addEventListener("click", async () => {
+    const T0 = expectedT();
+    const head = "swing\tT_s" + ($("length").value ? "\tL_cm=" + $("length").value : "") + (T0 ? "\texpected_T=" + T0.toFixed(3) : "");
+    const text = head + "\n" + periods.map((p, i) => (i + 1) + "\t" + p.toFixed(3)).join("\n");
+    try { await navigator.clipboard.writeText(text); setStatus("Table copied."); }
+    catch (err) { setStatus("Copy failed. Screenshot the table instead.", "error"); }
+  });
+</script>
+</body>
+</html>

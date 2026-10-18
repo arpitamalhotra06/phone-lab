@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone Physics Lab</title>
+<style>
+  :root { --bg:#f5f5f2; --fg:#1b1f23; --muted:#5d656d; --line:#cfd3d6; --accent:#0b5cad; --card:#ffffff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14181c; --fg:#eceff1; --muted:#9aa4ad; --line:#2d353c; --accent:#6aaeff; --card:#1b2127; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:20px; background:var(--bg); color:var(--fg);
+         font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width:520px; margin-inline:auto; }
+  h1 { font-size:1.5rem; margin:8px 0 4px; }
+  p.lead { color:var(--muted); margin:0 0 20px; line-height:1.4; }
+  .card { display:block; padding:16px; margin-bottom:12px; border:1px solid var(--line); border-radius:10px;
+          background:var(--card); color:var(--fg); text-decoration:none; }
+  a.card:hover { border-color:var(--accent); }
+  a.card:focus-visible { outline:3px solid var(--fg); outline-offset:2px; }
+  .num { color:var(--accent); font-weight:700; margin-right:6px; }
+  .title { font-size:1.1rem; font-weight:600; }
+  .desc { color:var(--muted); margin:6px 0 0; line-height:1.4; }
+  .soon { opacity:0.6; }
+  small { color:var(--muted); display:block; margin-top:20px; line-height:1.4; }
+</style>
+</head>
+<body>
+  <h1>Phone Physics Lab</h1>
+  <p class="lead">Your phone has motion sensors. Pick an experiment.</p>
+
+  <a class="card" href="height.html">
+    <div class="title"><span class="num">1</span>Drop height</div>
+    <p class="desc">Drop the phone onto carpet or a bed. The page times the fall and works out how far it dropped.</p>
+  </a>
+
+  <a class="card" href="pendulum.html">
+    <div class="title"><span class="num">2</span>Pendulum period</div>
+    <p class="desc">Point the phone camera at a swinging pendulum. The page tracks the bob and measures the time of one full swing, T.</p>
+  </a>
+
+  <div class="card soon" aria-disabled="true">
+    <div class="title"><span class="num">3</span>Coming soon</div>
+    <p class="desc">Another experiment will go here.</p>
+  </div>
+
+  <small>Open this page on your phone. It needs motion sensors and works best in Safari (iPhone) or Chrome (Android).</small>
+</body>
+</html>
