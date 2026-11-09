@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone Physics Lab</title>
+<style>
+  :root { --bg:#f5f5f2; --fg:#1b1f23; --muted:#5d656d; --line:#cfd3d6; --accent:#0b5cad; --card:#ffffff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14181c; --fg:#eceff1; --muted:#9aa4ad; --line:#2d353c; --accent:#6aaeff; --card:#1b2127; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:20px; background:var(--bg); color:var(--fg);
+         font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width:520px; margin-inline:auto; }
+  h1 { font-size:1.5rem; margin:8px 0 4px; }
+  p.lead { color:var(--muted); margin:0 0 20px; line-height:1.4; }
+  .card { display:block; padding:16px; margin-bottom:12px; border:1px solid var(--line); border-radius:10px;
+          background:var(--card); color:var(--fg); text-decoration:none; }
+  a.card:hover { border-color:var(--accent); }
+  a.card:focus-visible { outline:3px solid var(--fg); outline-offset:2px; }
+  .num { color:var(--accent); font-weight:700; margin-right:6px; }
+  .title { font-size:1.1rem; font-weight:600; }
+  .desc { color:var(--muted); margin:6px 0 0; line-height:1.4; }
+  .soon { opacity:0.55; }
+  small { color:var(--muted); display:block; margin-top:20px; line-height:1.4; }
+</style>
+</head>
+<body>
+  <h1>Phone Physics Lab</h1>
+  <p class="lead">Your phone has motion sensors. Pick an experiment.</p>
+
+  <div id="list"></div>
+
+  <small>Open this page on your phone. It needs motion sensors and works best in Safari (iPhone) or Chrome (Android). Greyed out experiments are not ready yet.</small>
+
+<script>
+  // Add a line here for each new experiment. A card turns into a link as soon as its page exists on the site.
+  const EXPERIMENTS = [
+    { file: "height.html",   title: "Drop height",       desc: "Drop the phone onto carpet or a bed. The page times the fall and works out how far it dropped." },
+    { file: "pendulum.html", title: "Pendulum period",   desc: "Point the phone camera at a swinging pendulum. The page tracks the bob and measures the time of one full swing, T." },
+    { file: "tilt.html",     title: "Tilt angle",        desc: "Rest the phone on a slope or a book. The page measures the angle from gravity, and you check it with a protractor." },
+    { file: "ramp.html",     title: "Ramp and friction", desc: "Let the phone slide down a slope. The page measures the acceleration and works out the friction." },
+    { file: "steps.html",    title: "Step counter",      desc: "Walk with the phone in your pocket. The page counts your steps and your step rate." },
+    { file: "sound.html",    title: "Sound pitch",       desc: "Play a note near the phone. The page finds its frequency from the microphone." },
+    { file: "spin.html",     title: "Spinning",          desc: "Spin the phone on a turntable and check the centripetal acceleration a = \u03C9\u00B2r." }
+  ];
+
+  const list = document.getElementById("list");
+  EXPERIMENTS.forEach((ex, i) => {
+    const card = document.createElement("div");
+    card.className = "card soon";
+    card.innerHTML = '<div class="title"><span class="num">' + (i + 1) + '</span></div><p class="desc"></p>';
+    card.querySelector(".title").appendChild(document.createTextNode(ex.title));
+    card.querySelector(".desc").textContent = ex.desc;
+    list.appendChild(card);
+    fetch(ex.file, { method: "HEAD", cache: "no-store" }).then(r => {
+      if (!r.ok) return;
+      const a = document.createElement("a");
+      a.className = "card";
+      a.href = ex.file;
+      a.innerHTML = card.innerHTML;
+      list.replaceChild(a, card);
+    }).catch(() => {});
+  });
+</script>
+</body>
+</html>
