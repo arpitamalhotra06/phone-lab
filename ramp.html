@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone Physics Lab: ramp</title>
+<style>
+  :root { --bg:#f5f5f2; --fg:#1b1f23; --muted:#5d656d; --line:#cfd3d6; --accent:#0b5cad; --bad:#b3261e; --ok:#1e7a3c; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14181c; --fg:#eceff1; --muted:#9aa4ad; --line:#2d353c; --accent:#6aaeff; --bad:#ff8a80; --ok:#7fd99a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:20px; background:var(--bg); color:var(--fg);
+         font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width:520px; margin-inline:auto; }
+  .back { display:inline-block; margin-bottom:14px; color:var(--accent); text-decoration:none; padding:6px 0; }
+  .back:hover { text-decoration:underline; }
+  h1 { font-size:1.3rem; margin:0 0 4px; }
+  h2 { font-size:1.05rem; margin:24px 0 8px; }
+  p { color:var(--muted); margin:0 0 14px; line-height:1.4; }
+  ol { color:var(--muted); margin:0 0 14px; padding-left:20px; line-height:1.5; }
+  button { font:inherit; font-weight:600; padding:12px 22px; border-radius:8px; border:0;
+           background:var(--accent); color:#fff; cursor:pointer; }
+  button.secondary { background:transparent; color:var(--fg); border:1px solid var(--line); padding:10px 14px; }
+  button:disabled { opacity:0.5; cursor:default; }
+  button:focus-visible, input:focus-visible, a:focus-visible { outline:3px solid var(--fg); outline-offset:2px; }
+  #status { margin:14px 0; min-height:2.8em; font-size:1.05rem; }
+  #status.error { color:var(--bad); }
+  #status.ok { color:var(--ok); font-weight:600; }
+  .btns { display:flex; gap:10px; flex-wrap:wrap; }
+  table { width:100%; border-collapse:collapse; font-variant-numeric: tabular-nums; }
+  .live td { padding:8px 0; border-bottom:1px solid var(--line); font-size:1.2rem; }
+  .live td:first-child { color:var(--muted); font-size:1rem; width:55%; }
+  .live td:last-child { text-align:right; }
+  .log th, .log td { padding:8px 4px; border-bottom:1px solid var(--line); text-align:right; font-size:0.9rem; }
+  .log th:first-child, .log td:first-child { text-align:left; }
+  .log th { color:var(--muted); font-weight:600; }
+  #summary { margin-top:12px; line-height:1.6; }
+  label { display:block; color:var(--muted); margin-bottom:4px; }
+  input { font:inherit; padding:8px; width:7em; border-radius:6px; border:1px solid var(--line);
+          background:transparent; color:var(--fg); }
+  small { color:var(--muted); display:block; margin-top:10px; line-height:1.4; }
+</style>
+</head>
+<body>
+  <a class="back" href="index.html">&larr; All experiments</a>
+  <h1>Ramp: acceleration and friction</h1>
+  <p>Let the phone slide down a slope. The page measures how fast it speeds up, then works out the friction between the phone and the ramp.</p>
+  <ol>
+    <li>Make a ramp from a smooth board or a thick book cover, at an angle steep enough for the phone to slide. Put a pillow at the bottom to stop the phone gently.</li>
+    <li>Lay the phone flat on the ramp, screen up, held still by a finger.</li>
+    <li>Tap Start, then Ready. Keep holding it. When the page says "Let go now", lift your finger and let it slide.</li>
+  </ol>
+
+  <div class="btns">
+    <button id="start">Start</button>
+    <button id="ready" disabled>Ready</button>
+  </div>
+  <div id="status" role="status"></div>
+
+  <table class="live">
+    <tr><td>Slope reading</td><td><span id="sval">--</span> m/s²</td></tr>
+    <tr><td>Ramp angle (from the phone)</td><td><span id="ang">--</span>°</td></tr>
+    <tr><td>Rate</td><td><span id="rate">--</span> Hz</td></tr>
+  </table>
+
+  <div style="margin-top:14px">
+    <label for="proto">Protractor angle (°), optional. If you type one, it is used instead of the phone's angle.</label>
+    <input id="proto" type="number" min="1" max="89" step="0.5" inputmode="decimal">
+  </div>
+
+  <h2>Slides</h2>
+  <table class="log">
+    <thead><tr><th>#</th><th>Angle (°)</th><th>a (m/s²)</th><th>g sin θ</th><th>μ</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <div id="summary"></div>
+  <div class="btns" style="margin-top:12px">
+    <button class="secondary" id="copy">Copy table</button>
+    <button class="secondary" id="clear">Clear</button>
+  </div>
+
+  <small>
+    While the phone rests on the ramp, the page records the reading and finds which way is down the slope.
+    When you let go, it measures how much the reading along the slope changes. That change is the acceleration a, and the phone must keep its orientation as it slides.
+    The first and last 0.15 s of the slide are ignored, and the middle value (median) is used, so the release and the stop do not count.
+    Without friction a = g sin θ. With friction a = g (sin θ − μ cos θ), so μ = tan θ − a / (g cos θ). Here g = 9.8 m/s².
+    The phone must slide for at least about half a second. If it does not slide at all, the ramp is too shallow.
+  </small>
+
+<script>
+  // ---- core ----
+  function makeRamp() {
+    let state = "idle", win = [], R = null, u = null, theta = null;
+    let over = 0, under = 0, seg = null, recent = [];
+    function startRest() { state = "rest"; win = []; R = null; u = null; theta = null; over = 0; under = 0; seg = null; recent = []; }
+    function process(t, v) {
+      if (state === "rest") {
+        win.push({ t: t, v: v });
+        while (win.length && t - win[0].t > 1000) win.shift();
+        if (win.length > 10 && t - win[0].t >= 950) {
+          let m = [0, 0, 0];
+          for (const w of win) { m[0] += w.v[0]; m[1] += w.v[1]; m[2] += w.v[2]; }
+          m = [m[0] / win.length, m[1] / win.length, m[2] / win.length];
+          let dev = 0;
+          for (const w of win) dev = Math.max(dev, Math.hypot(w.v[0] - m[0], w.v[1] - m[1], w.v[2] - m[2]));
+          if (dev < 0.35) {
+            const mag = Math.hypot(m[0], m[1], m[2]);
+            const inPlane = Math.hypot(m[0], m[1]);
+            if (inPlane < 0.35) return { type: "flat" };
+            R = m; u = [m[0] / inPlane, m[1] / inPlane];
+            theta = Math.acos(Math.min(1, Math.abs(m[2]) / mag)) * 180 / Math.PI;
+            state = "armed"; over = 0; recent = [];
+            return { type: "rest", theta: theta };
+          }
+          return { type: "moving" };
+        }
+        return { type: "collecting" };
+      }
+      if (state === "armed" || state === "sliding") {
+        const s = Math.abs((v[0] - R[0]) * u[0] + (v[1] - R[1]) * u[1]);
+        if (state === "armed") {
+          recent.push({ t: t, s: s }); if (recent.length > 3) recent.shift();
+          if (s > 0.5) over++; else over = 0;
+          if (over >= 3) { state = "sliding"; seg = recent.slice(); under = 0; return { type: "sliding", s: s }; }
+          return { type: "armed", s: s };
+        }
+        seg.push({ t: t, s: s });
+        if (s < 0.25) under++; else under = 0;
+        if (under >= 6 || t - seg[0].t > 4000) {
+          const endIdx = seg.length - under;
+          const t0 = seg[0].t, t1 = seg[Math.max(0, endIdx - 1)].t;
+          const mid = seg.slice(0, endIdx).filter(p => p.t - t0 >= 150 && t1 - p.t >= 150);
+          if (mid.length < 6) { state = "armed"; over = 0; recent = []; return { type: "tooshort", dur: t1 - t0 }; }
+          const vals = mid.map(p => p.s).sort((a, b) => a - b);
+          const a = vals[Math.floor(vals.length / 2)];
+          state = "done";
+          return { type: "slide", a: a, dur: t1 - t0, n: mid.length, theta: theta };
+        }
+        return { type: "sliding", s: s };
+      }
+      return { type: "idle" };
+    }
+    function isArmed() { return state === "armed"; }
+    return { startRest: startRest, process: process, isArmed: isArmed };
+  }
+  // ---- end core ----
+
+  const $ = id => document.getElementById(id);
+  const G = 9.8;
+  const ramp = makeRamp();
+  const rowsData = [];
+  let listening = false, count = 0, lastRateTime = 0, armTimer = null, lastTheta = null;
+
+  function setStatus(msg, cls) { $("status").textContent = msg; $("status").className = cls || ""; }
+
+  function angleUsed(measured) {
+    const p = parseFloat($("proto").value);
+    return p > 0 ? p : measured;
+  }
+
+  function render() {
+    $("rows").innerHTML = rowsData.map((r, i) =>
+      "<tr><td>" + (i + 1) + "</td><td>" + r.th.toFixed(1) + "</td><td>" + r.a.toFixed(2) + "</td><td>" +
+      r.gs.toFixed(2) + "</td><td>" + (isNaN(r.mu) ? "--" : r.mu.toFixed(2)) + "</td></tr>").join("");
+    const mus = rowsData.map(r => r.mu).filter(x => !isNaN(x));
+    if (mus.length === 0) { $("summary").textContent = ""; return; }
+    const mean = mus.reduce((a, b) => a + b, 0) / mus.length;
+    let html = "Mean friction coefficient \u03BC = <b>" + mean.toFixed(3) + "</b>";
+    if (mus.length > 1) {
+      const sd = Math.sqrt(mus.reduce((a, b) => a + (b - mean) * (b - mean), 0) / (mus.length - 1));
+      html += " (std dev " + sd.toFixed(3) + ", " + mus.length + " slides)";
+    }
+    $("summary").innerHTML = html;
+  }
+
+  function handleMotion(e) {
+    const a = e.accelerationIncludingGravity;
+    if (!a || a.x === null) { setStatus("No accelerometer data. Try another browser or device.", "error"); return; }
+    const t = performance.now();
+    count++;
+    if (t - lastRateTime >= 1000) { $("rate").textContent = Math.round(count * 1000 / (t - lastRateTime)); count = 0; lastRateTime = t; }
+    const ev = ramp.process(t, [a.x, a.y, a.z]);
+    if (ev.type === "moving") setStatus("Hold the phone still on the ramp.");
+    else if (ev.type === "flat") setStatus("The ramp is too flat for the page to find the slope. Tilt it more and tap Ready again.", "error");
+    else if (ev.type === "rest") {
+      lastTheta = ev.theta;
+      $("ang").textContent = ev.theta.toFixed(1);
+      setStatus("Angle " + ev.theta.toFixed(1) + "\u00B0. Let go now.", "ok");
+      clearTimeout(armTimer);
+      armTimer = setTimeout(() => { if (ramp.isArmed()) { setStatus("No slide detected. Is the ramp steep enough? Tap Ready to try again.", "error"); $("ready").disabled = false; } }, 20000);
+    }
+    else if (ev.type === "armed" || ev.type === "sliding") $("sval").textContent = ev.s.toFixed(2);
+    else if (ev.type === "tooshort") setStatus("That slide was too short (" + Math.round(ev.dur) + " ms). Let go gently, and use a longer ramp. Try again.", "error");
+    else if (ev.type === "slide") {
+      clearTimeout(armTimer);
+      const th = angleUsed(ev.theta), r = th * Math.PI / 180;
+      const gs = G * Math.sin(r);
+      const mu = Math.tan(r) - ev.a / (G * Math.cos(r));
+      rowsData.push({ th: th, a: ev.a, gs: gs, mu: mu });
+      render();
+      setStatus("Slide recorded: a = " + ev.a.toFixed(2) + " m/s² over " + (ev.dur / 1000).toFixed(2) + " s. Tap Ready for another.", "ok");
+      $("ready").disabled = false;
+    }
+  }
+
+  async function start() {
+    if (!window.isSecureContext) { setStatus("Page must be served over HTTPS.", "error"); return; }
+    if (typeof DeviceMotionEvent === "undefined") { setStatus("This browser has no motion sensor support.", "error"); return; }
+    if (typeof DeviceMotionEvent.requestPermission === "function") {
+      try {
+        const result = await DeviceMotionEvent.requestPermission();
+        if (result !== "granted") { setStatus("Permission denied. On iPhone: Settings > Safari > Motion & Orientation Access.", "error"); return; }
+      } catch (err) { setStatus("Permission request failed: " + err.message, "error"); return; }
+    }
+    if (!listening) { window.addEventListener("devicemotion", handleMotion); listening = true; }
+    lastRateTime = performance.now(); count = 0;
+    $("ready").disabled = false;
+    setStatus("Running. Put the phone on the ramp, then tap Ready.");
+  }
+
+  function ready() {
+    $("ready").disabled = true;
+    let n = 3;
+    setStatus("Hold the phone still on the ramp. Starting in " + n + "...");
+    const iv = setInterval(() => {
+      n--;
+      if (n > 0) setStatus("Hold the phone still on the ramp. Starting in " + n + "...");
+      else { clearInterval(iv); ramp.startRest(); setStatus("Measuring the ramp. Keep holding still..."); }
+    }, 1000);
+  }
+
+  $("start").addEventListener("click", start);
+  $("ready").addEventListener("click", ready);
+  $("proto").addEventListener("input", () => {});
+  $("clear").addEventListener("click", () => { rowsData.length = 0; render(); setStatus("Cleared."); });
+  $("copy").addEventListener("click", async () => {
+    const text = "slide\tangle_deg\ta_ms2\tg_sin_theta\tmu\n" +
+      rowsData.map((r, i) => (i + 1) + "\t" + r.th.toFixed(1) + "\t" + r.a.toFixed(2) + "\t" + r.gs.toFixed(2) + "\t" + (isNaN(r.mu) ? "" : r.mu.toFixed(3))).join("\n");
+    try { await navigator.clipboard.writeText(text); setStatus("Table copied."); }
+    catch (err) { setStatus("Copy failed. Screenshot the table instead.", "error"); }
+  });
+</script>
+</body>
+</html>
