@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone Physics Lab: tilt angle</title>
+<style>
+  :root { --bg:#f5f5f2; --fg:#1b1f23; --muted:#5d656d; --line:#cfd3d6; --accent:#0b5cad; --bad:#b3261e; --ok:#1e7a3c; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14181c; --fg:#eceff1; --muted:#9aa4ad; --line:#2d353c; --accent:#6aaeff; --bad:#ff8a80; --ok:#7fd99a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:20px; background:var(--bg); color:var(--fg);
+         font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width:520px; margin-inline:auto; }
+  .back { display:inline-block; margin-bottom:14px; color:var(--accent); text-decoration:none; padding:6px 0; }
+  .back:hover { text-decoration:underline; }
+  h1 { font-size:1.3rem; margin:0 0 4px; }
+  h2 { font-size:1.05rem; margin:24px 0 8px; }
+  p { color:var(--muted); margin:0 0 14px; line-height:1.4; }
+  ol { color:var(--muted); margin:0 0 14px; padding-left:20px; line-height:1.5; }
+  button { font:inherit; font-weight:600; padding:12px 22px; border-radius:8px; border:0;
+           background:var(--accent); color:#fff; cursor:pointer; }
+  button.secondary { background:transparent; color:var(--fg); border:1px solid var(--line); padding:10px 14px; }
+  button:focus-visible, input:focus-visible, a:focus-visible { outline:3px solid var(--fg); outline-offset:2px; }
+  #status { margin:14px 0; min-height:1.4em; }
+  #status.error { color:var(--bad); }
+  #status.ok { color:var(--ok); font-weight:600; }
+  .btns { display:flex; gap:10px; flex-wrap:wrap; }
+  .big { font-size:3.4rem; font-weight:700; margin:10px 0 0; font-variant-numeric: tabular-nums; }
+  .bigsub { color:var(--muted); margin:0 0 10px; }
+  table { width:100%; border-collapse:collapse; font-variant-numeric: tabular-nums; }
+  .live td { padding:8px 0; border-bottom:1px solid var(--line); font-size:1.2rem; }
+  .live td:first-child { color:var(--muted); font-size:1rem; width:50%; }
+  .live td:last-child { text-align:right; }
+  .log th, .log td { padding:8px 4px; border-bottom:1px solid var(--line); text-align:right; font-size:0.95rem; }
+  .log th:first-child, .log td:first-child { text-align:left; }
+  .log th { color:var(--muted); font-weight:600; }
+  #summary { margin-top:12px; line-height:1.6; }
+  label { display:block; color:var(--muted); margin-bottom:4px; }
+  input { font:inherit; padding:8px; width:7em; border-radius:6px; border:1px solid var(--line);
+          background:transparent; color:var(--fg); }
+  .row { display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; }
+  small { color:var(--muted); display:block; margin-top:10px; line-height:1.4; }
+</style>
+</head>
+<body>
+  <a class="back" href="index.html">&larr; All experiments</a>
+  <h1>Tilt angle</h1>
+  <p>The page works out how far the phone is tilted from flat, using the direction of gravity. Check it against a protractor.</p>
+  <ol>
+    <li>Tap Start. Lay the phone flat on a table and tap Zero. This removes the sensor's small offset.</li>
+    <li>Rest the phone on a book, a board or a ramp at an angle. Keep it still.</li>
+    <li>Measure the angle of the board with a protractor, type it in, and tap Record.</li>
+  </ol>
+
+  <div class="btns">
+    <button id="start">Start</button>
+    <button class="secondary" id="zero">Zero (phone flat)</button>
+  </div>
+  <div id="status" role="status"></div>
+
+  <div class="big"><span id="angle">--</span>°</div>
+  <div class="bigsub">tilt from flat</div>
+
+  <table class="live">
+    <tr><td>Rate</td><td><span id="rate">--</span> Hz</td></tr>
+    <tr><td>|a| (should be about 9.8)</td><td><span id="mag">--</span> m/s²</td></tr>
+    <tr><td>Zero offset</td><td><span id="off">0.0</span>°</td></tr>
+  </table>
+
+  <h2>Compare with a protractor</h2>
+  <div class="row">
+    <div><label for="proto">Protractor angle (°)</label><input id="proto" type="number" min="0" max="90" step="0.5" inputmode="decimal"></div>
+    <button id="record">Record</button>
+  </div>
+
+  <h2>Readings</h2>
+  <table class="log">
+    <thead><tr><th>#</th><th>Phone (°)</th><th>Protractor (°)</th><th>Diff (°)</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <div id="summary"></div>
+  <div class="btns" style="margin-top:12px">
+    <button class="secondary" id="copy">Copy table</button>
+    <button class="secondary" id="clear">Clear</button>
+  </div>
+
+  <small>
+    Tilt from flat = arccos(|z| / |a|), where z is the reading along the screen's normal and |a| is the total acceleration.
+    Gravity is the only thing the sensor sees while the phone is still, so the tilt is the angle between the screen and the ground.
+    The reading is the average of the last half second. This does not depend on which way up the phone is or on iPhone and Android sign differences.
+    It measures the angle of the surface the screen lies on, so lay the phone flat on the slope.
+  </small>
+
+<script>
+  // ---- core ----
+  function tiltFromVector(ax, ay, az) {
+    const m = Math.sqrt(ax * ax + ay * ay + az * az);
+    if (m === 0) return null;
+    const c = Math.min(1, Math.abs(az) / m);
+    return Math.acos(c) * 180 / Math.PI;
+  }
+  function makeSmoother(n) {
+    const buf = [];
+    return {
+      push: function (x, y, z) {
+        buf.push([x, y, z]);
+        if (buf.length > n) buf.shift();
+        let sx = 0, sy = 0, sz = 0;
+        for (const v of buf) { sx += v[0]; sy += v[1]; sz += v[2]; }
+        const k = buf.length;
+        return [sx / k, sy / k, sz / k];
+      },
+      clear: function () { buf.length = 0; }
+    };
+  }
+  // ---- end core ----
+
+  const $ = id => document.getElementById(id);
+  const smoother = makeSmoother(30);
+  const rowsData = [];
+  let offset = 0, current = null, count = 0, lastRateTime = 0;
+
+  function setStatus(msg, cls) { $("status").textContent = msg; $("status").className = cls || ""; }
+
+  function handleMotion(e) {
+    const a = e.accelerationIncludingGravity;
+    if (!a || a.x === null) { setStatus("No accelerometer data. Try another browser or device.", "error"); return; }
+    const t = performance.now();
+    count++;
+    if (t - lastRateTime >= 1000) {
+      $("rate").textContent = Math.round(count * 1000 / (t - lastRateTime));
+      count = 0; lastRateTime = t;
+    }
+    const v = smoother.push(a.x, a.y, a.z);
+    const raw = tiltFromVector(v[0], v[1], v[2]);
+    if (raw === null) return;
+    $("mag").textContent = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).toFixed(2);
+    current = { raw: raw };
+    $("angle").textContent = (raw - offset).toFixed(1);
+  }
+
+  function render() {
+    $("rows").innerHTML = rowsData.map((r, i) =>
+      "<tr><td>" + (i + 1) + "</td><td>" + r.phone.toFixed(1) + "</td><td>" + r.proto.toFixed(1) +
+      "</td><td>" + (r.phone - r.proto >= 0 ? "+" : "") + (r.phone - r.proto).toFixed(1) + "</td></tr>").join("");
+    const n = rowsData.length;
+    if (n === 0) { $("summary").textContent = ""; return; }
+    const diffs = rowsData.map(r => r.phone - r.proto);
+    const mean = diffs.reduce((a, b) => a + b, 0) / n;
+    const mae = diffs.reduce((a, b) => a + Math.abs(b), 0) / n;
+    $("summary").innerHTML = "Mean difference: <b>" + (mean >= 0 ? "+" : "") + mean.toFixed(2) + "°</b>. Mean size of difference: <b>" + mae.toFixed(2) + "°</b> (" + n + " readings)";
+  }
+
+  async function start() {
+    if (!window.isSecureContext) { setStatus("Page must be served over HTTPS.", "error"); return; }
+    if (typeof DeviceMotionEvent === "undefined") { setStatus("This browser has no motion sensor support.", "error"); return; }
+    if (typeof DeviceMotionEvent.requestPermission === "function") {
+      try {
+        const result = await DeviceMotionEvent.requestPermission();
+        if (result !== "granted") { setStatus("Permission denied. On iPhone: Settings > Safari > Motion & Orientation Access.", "error"); return; }
+      } catch (err) { setStatus("Permission request failed: " + err.message, "error"); return; }
+    }
+    window.removeEventListener("devicemotion", handleMotion);
+    window.addEventListener("devicemotion", handleMotion);
+    smoother.clear(); lastRateTime = performance.now(); count = 0;
+    setStatus("Running. Lay the phone flat on a table and tap Zero.");
+  }
+
+  $("start").addEventListener("click", start);
+  $("zero").addEventListener("click", () => {
+    if (!current) { setStatus("Tap Start first.", "error"); return; }
+    offset = current.raw;
+    $("off").textContent = offset.toFixed(1);
+    setStatus("Zeroed. Now rest the phone on the slope and keep it still.", "ok");
+  });
+  $("record").addEventListener("click", () => {
+    const p = parseFloat($("proto").value);
+    if (!current) { setStatus("Tap Start first.", "error"); return; }
+    if (isNaN(p)) { setStatus("Type the protractor angle first.", "error"); return; }
+    rowsData.push({ phone: current.raw - offset, proto: p });
+    render();
+    setStatus("Recorded.", "ok");
+  });
+  $("clear").addEventListener("click", () => { rowsData.length = 0; render(); setStatus("Cleared."); });
+  $("copy").addEventListener("click", async () => {
+    const text = "n\tphone_deg\tprotractor_deg\tdiff_deg\n" +
+      rowsData.map((r, i) => (i + 1) + "\t" + r.phone.toFixed(1) + "\t" + r.proto.toFixed(1) + "\t" + (r.phone - r.proto).toFixed(1)).join("\n");
+    try { await navigator.clipboard.writeText(text); setStatus("Table copied."); }
+    catch (err) { setStatus("Copy failed. Screenshot the table instead.", "error"); }
+  });
+</script>
+</body>
+</html>
