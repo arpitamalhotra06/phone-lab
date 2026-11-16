@@ -35,39 +35,4 @@ BIO.frog = {
      hs:['Ventral = belly side. Dorsal = back side.','Anterior = toward the head. Posterior = toward the rear.',"In belly view with the head up, the frog's left is on your right."],
      col:['Directions describe the animal, not the viewer.','The body cavity (coelom) is lined by peritoneum, and organs hang from mesenteries.']},
     {t:'Digestion',
-     hs:['Food path: mouth, esophagus, stomach, small intestine, large intestine, cloaca.','The liver makes bile, the gallbladder stores it, and the pancreas makes digestive enzymes.'],
-     col:['Bile and pancreatic enzymes enter the duodenum.','Adult frogs are carnivores. Tadpoles eat plants and have a longer, more coiled gut.']},
-    {t:'Heart and blood',
-     hs:['Three chambers: right atrium, left atrium and one ventricle.','Blood goes to the lungs and skin, back to the heart, then out to the body.'],
-     col:['Double circulation with partial mixing in the single ventricle.','The pulmocutaneous arteries carry blood to the lungs and skin.']},
-    {t:'Breathing',
-     hs:['Frogs breathe through the skin, the lining of the mouth and the lungs.','The skin must stay moist to work.'],
-     col:['There is no diaphragm. Frogs use buccal pumping to move air.','Skin breathing can supply most oxygen in cold water or during hibernation.']},
-    {t:'Waste and reproduction',
-     hs:['Kidneys filter the blood. Waste leaves through the cloaca.','Eggs are fertilized outside the body, in water. Tadpoles change into frogs (metamorphosis).'],
-     col:['Adult frogs excrete mostly urea. Ureters empty into the cloaca, and the bladder is a ventral outpocket.','Fat bodies store energy for breeding and hibernation.']},
-    {t:'In the lab',
-     hs:['Follow your teacher\u2019s instructions at every step.','Wash your hands after handling specimens, and dispose of them as directed.'],
-     col:['Ask your instructor about approved sourcing and non-animal alternatives.']}
-  ],
-  quiz: {
-    easy: [
-      {q:'Which organ pumps blood?', o:['Liver','Heart','Stomach'], a:1, e:'The heart pumps blood.'},
-      {q:'What is the belly side called?', o:['Dorsal','Ventral','Anterior'], a:1, e:'Ventral is the belly side. Dorsal is the back.'},
-      {q:'After the stomach, food goes to the...', o:['Small intestine','Lungs','Heart'], a:0, e:'Most digestion and absorption happens in the small intestine.'},
-      {q:'Frogs can breathe through their skin.', o:['True','False'], a:0, e:'True. Moist skin is a major breathing surface.'}
-    ],
-    medium: [
-      {q:'How many chambers does a frog heart have?', o:['Two','Three','Four'], a:1, e:'Two atria and one ventricle.'},
-      {q:'Which organ makes bile?', o:['Liver','Stomach','Lung'], a:0, e:'The liver makes bile. The gallbladder stores it.'},
-      {q:'The cloaca is the exit for...', o:['Only digestive waste','Digestive, urinary and reproductive tracts','Only eggs'], a:1, e:'The cloaca is a shared exit.'},
-      {q:'Belly view, head up: the frog\u2019s left is on...', o:['Your left','Your right'], a:1, e:'Directions are the frog\u2019s own, so its left appears on your right.'}
-    ],
-    hard: [
-      {q:'What limits mixing of blood in the single ventricle?', o:['A wall dividing it in two','Trabeculae and the spiral valve','The lungs squeezing it'], a:1, e:'Trabeculae and the spiral valve help keep the blood streams largely separate.'},
-      {q:'Which vessels carry blood to the lungs and skin?', o:['Pulmocutaneous arteries','Hepatic portal vein','Carotid arteries'], a:0, e:'Pulmocutaneous arteries serve both lungs and skin.'},
-      {q:'How do frogs fill their lungs?', o:['Diaphragm contraction','Buccal pumping','Rib movement'], a:1, e:'Frogs have no diaphragm and push air in with the mouth floor.'},
-      {q:'What is the main nitrogen waste of adult frogs?', o:['Urea','Uric acid','Ammonia'], a:0, e:'Adult frogs excrete mostly urea.'}
-    ]
-  }
-};
+     hs:['Food path: mouth, esophagus, stomach, small intestine, large intestine, cloaca.','The liver makes bile, the gallbladder stores it, and the pancreas
