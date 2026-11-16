@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reaction kinetics — Phone Lab</title>
+<style>
+  :root {
+    --bg:#fbf9fd; --fg:#4d4659; --muted:#948ca6; --line:#ece4f2;
+    --accent:#e8a08d; --accent-ink:#b05f48; --soft:#f9ece8; --card:#ffffff; --gold:#c9a662;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:#232029; --fg:#efeaf4; --muted:#a79fb5; --line:#3a3445;
+      --accent:#f0b8a6; --accent-ink:#f5c9b8; --soft:#3d2f2b; --card:#2c2836; --gold:#f0d295;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:20px; background:var(--bg); color:var(--fg);
+         font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width:520px; margin-inline:auto; }
+  a.back { color:var(--muted); text-decoration:none; font-size:.9rem; }
+  h1 { font-size:1.5rem; margin:10px 0 4px; }
+  h2 { font-size:1.15rem; margin:26px 0 10px; padding-bottom:6px; border-bottom:2px solid var(--accent); }
+  p.lead { color:var(--muted); margin:0 0 8px; line-height:1.45; }
+  .card { padding:14px; margin-bottom:12px; border:1px solid var(--line); border-radius:14px; background:var(--card); }
+  .note { font-size:.85rem; color:var(--muted); line-height:1.45; }
+  .btn { background:var(--accent-ink); color:#fff; border:none; border-radius:10px;
+         padding:10px 14px; font-size:.95rem; cursor:pointer; margin:4px 4px 4px 0; }
+  .btn.sec { background:var(--soft); color:var(--accent-ink); }
+  .btn:disabled { opacity:.45; cursor:default; }
+  input, select { font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:10px;
+                  background:var(--bg); color:var(--fg); width:100%; max-width:110px; }
+  .capture { position:relative; width:100%; min-height:180px; background:#fff; border:1px solid var(--line);
+             border-radius:12px; overflow:hidden; display:flex; align-items:center; justify-content:center; }
+  .capture video, .capture img { width:100%; max-height:300px; object-fit:contain; display:block; }
+  .capture .hint { position:absolute; inset:auto 0 6px 0; text-align:center; font-size:.78rem; color:#777; pointer-events:none; }
+  .reading { display:flex; align-items:center; gap:10px; margin-top:10px; flex-wrap:wrap; }
+  .swatch { width:44px; height:44px; border-radius:10px; border:1px solid var(--line); }
+  .rgbline { font-size:1rem; font-weight:600; }
+  .row { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  .row input { width:70px; max-width:none; }
+  .clock { font-size:2.4rem; font-weight:700; color:var(--accent-ink); font-variant-numeric:tabular-nums; margin:8px 0; }
+  table { width:100%; border-collapse:collapse; font-size:.85rem; margin:8px 0; }
+  th, td { padding:6px 4px; border-bottom:1px solid var(--line); text-align:left; vertical-align:middle; }
+  th { color:var(--muted); font-weight:600; }
+  td input { width:58px; max-width:none; padding:6px; }
+  td .del { background:none; border:none; color:var(--muted); font-size:1rem; cursor:pointer; padding:2px 6px; }
+  canvas { width:100%; background:var(--card); border:1px solid var(--line); border-radius:12px; }
+  .result { background:var(--soft); border-radius:12px; padding:12px 14px; margin-top:10px; line-height:1.55; }
+  .result strong { color:var(--accent-ink); }
+  .result table { margin:6px 0 2px; font-size:.85rem; }
+  textarea { width:100%; height:90px; font-family:ui-monospace,monospace; font-size:.8rem;
+             border:1px solid var(--line); border-radius:10px; background:var(--bg); color:var(--fg); }
+  #msg { color:var(--gold); font-size:.85rem; min-height:1.2em; margin:6px 0; }
+  small { color:var(--muted); display:block; margin-top:24px; line-height:1.45; }
+</style>
+</head>
+<body>
+  <a class="back" href="index.html">&larr; Phone Lab</a>
+  <h1>Reaction kinetics</h1>
+  <p class="lead">Watch a coloured reaction fade, record its colour over time, and work out whether the reaction is zero, first or second order — and its rate constant.</p>
+
+  <div class="card">
+    <h2 style="margin-top:0">1 · The reaction</h2>
+    <p class="note">Use an instructor-approved fading reaction — for example, dilute blue food dye with household bleach, with the volumes your teacher sets. Mix, start the timer at the same moment, and record a reading every 20&ndash;30&nbsp;s until the colour has almost gone. Keep the cup, background, lighting and camera position fixed for the whole run.</p>
+    <p class="note"><strong>Safety:</strong> bleach irritates skin and eyes; wear goggles, avoid inhaling fumes, and follow your instructor&rsquo;s instructions.</p>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">2 · Blank & reading</h2>
+    <p class="note">Save a blank reading of plain water first, so the page can work out absorbance. Then tap the middle of the liquid in each photo.</p>
+    <div class="row" style="margin-bottom:8px">
+      <button class="btn" id="startCam">Start camera</button>
+      <label class="btn sec" style="margin:4px 4px 4px 0">Use a photo
+        <input type="file" id="photoFile" accept="image/*" style="display:none">
+      </label>
+    </div>
+    <div class="capture" id="capture">
+      <video id="cam" playsinline muted autoplay style="display:none"></video>
+      <img id="photo" alt="Loaded photo" style="display:none">
+      <div class="hint" id="capHint">Tap a spot to sample its colour</div>
+    </div>
+    <div class="reading">
+      <div class="swatch" id="swatch" style="background:#eee"></div>
+      <div>
+        <div class="rgbline" id="rgbText">No reading yet</div>
+        <div class="row" style="margin-top:4px">
+          <input type="number" id="mR" placeholder="R" min="0" max="255">
+          <input type="number" id="mG" placeholder="G" min="0" max="255">
+          <input type="number" id="mB" placeholder="B" min="0" max="255">
+          <button class="btn sec" id="setManual">Set</button>
+        </div>
+      </div>
+    </div>
+    <div id="msg"></div>
+    <div class="row">
+      <button class="btn" id="setBlank">Save as blank (water)</button>
+    </div>
+    <p class="note" id="blankState" style="margin-top:6px">Blank: not set yet.</p>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">3 · Timer & readings</h2>
+    <div class="clock" id="clock">0:00.0</div>
+    <div class="row">
+      <button class="btn" id="startBtn">Start (at mixing)</button>
+      <button class="btn sec" id="resetBtn">Reset</button>
+      <button class="btn" id="recBtn">Record reading</button>
+    </div>
+    <table id="recTable">
+      <thead><tr><th>t (s)</th><th>R</th><th>G</th><th>B</th><th>A</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="row" style="margin-top:6px">
+      <span class="note" style="margin-right:4px">Add manually:</span>
+      <input type="number" id="manT" placeholder="t (s)" min="0">
+      <input type="number" id="manR" placeholder="R" min="0" max="255">
+      <input type="number" id="manG" placeholder="G" min="0" max="255">
+      <input type="number" id="manB" placeholder="B" min="0" max="255">
+      <button class="btn sec" id="manAdd">Add</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button class="btn sec" id="demoData">Load demo data</button>
+      <button class="btn sec" id="clearData">Clear all readings</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">4 · Analyse</h2>
+    <p class="note">If the colour does not fade all the way (a stubborn background tint), enter an estimate of the final absorbance A&#8734; below; the page fits the models to A&nbsp;&minus;&nbsp;A&#8734;.</p>
+    <div class="row" style="margin-bottom:8px">
+      <label class="note">A&#8734; (final absorbance):
+        <input type="number" id="aInf" value="0" step="any" min="0" style="width:80px">
+      </label>
+    </div>
+    <button class="btn" id="fitBtn">Fit models</button>
+    <div id="fitOut" class="result" style="display:none"></div>
+    <canvas id="plot" width="480" height="320" style="margin-top:10px"></canvas>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">Export</h2>
+    <div class="row">
+      <button class="btn sec" id="csvBtn">Download CSV</button>
+      <button class="btn sec" id="csvShow">Show CSV</button>
+    </div>
+    <textarea id="csvBox" style="display:none;margin-top:8px" readonly></textarea>
+  </div>
+
+  <small>Keep every run in the same light. The camera needs HTTPS (e.g. GitHub Pages) — if it will not start, take photos with the phone&rsquo;s camera app and load them, or type RGB values. Rate constants come out in whatever concentration units the colour represents — compare orders between runs, not absolute k values across different setups.</small>
+
+<script>
+(function () {
+  "use strict";
+  // ---------- state ----------
+  var blank = null;
+  var rows = [];        // [{t, r, g, b}]
+  var reading = null;
+  var fit = null;       // best model result
+  var t0 = null, timerId = null, elapsed = 0;
+
+  var $ = function (id) { return document.getElementById(id); };
+  var msg = function (t) { $("msg").textContent = t || ""; };
+
+  // ---------- timer ----------
+  function fmt(s) {
+    var m = Math.floor(s / 60);
+    var sec = s - m * 60;
+    return m + ":" + (sec < 10 ? "0" : "") + sec.toFixed(1);
+  }
+  function tick() {
+    elapsed = (performance.now() - t0) / 1000;
+    $("clock").textContent = fmt(elapsed);
+  }
+  $("startBtn").addEventListener("click", function () {
+    if (timerId) return;
+    t0 = performance.now();
+    tick();
+    timerId = setInterval(tick, 100);
+    msg("Timer running — record a reading every 20\u201330 s.");
+  });
+  $("resetBtn").addEventListener("click", function () {
+    clearInterval(timerId); timerId = null; t0 = null; elapsed = 0;
+    $("clock").textContent = "0:00.0";
+  });
+  function now() { return timerId ? elapsed : null; }
+
+  // ---------- reading capture ----------
+  var camVideo = $("cam"), photoImg = $("photo"), capture = $("capture");
+  var source = "none";
+
+  $("startCam").addEventListener("click", function () {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      msg("Camera not supported here — use a photo or manual entry.");
+      return;
+    }
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+      .then(function (s) { camVideo.srcObject = s; return camVideo.play(); })
+      .then(function () {
+        source = "camera";
+        camVideo.style.display = "block";
+        photoImg.style.display = "none";
+        msg("");
+      })
+      .catch(function (e) { msg("Camera unavailable (" + e.name + "). Use a photo or manual entry."); });
+  });
+
+  $("photoFile").addEventListener("change", function (e) {
+    var f = e.target.files && e.target.files[0];
+    if (!f) return;
+    var rd = new FileReader();
+    rd.onload = function () {
+      photoImg.onload = function () {
+        source = "photo";
+        photoImg.style.display = "block";
+        camVideo.style.display = "none";
+        msg("");
+      };
+      photoImg.src = rd.result;
+    };
+    rd.readAsDataURL(f);
+  });
+
+  capture.addEventListener("click", function (e) {
+    var el = source === "camera" ? camVideo : source === "photo" ? photoImg : null;
+    if (!el) { msg("Start the camera or load a photo first."); return; }
+    var W = el.videoWidth || el.naturalWidth;
+    var H = el.videoHeight || el.naturalHeight;
+    if (!W || !H) return;
+    var rect = el.getBoundingClientRect();
+    var x = (e.clientX - rect.left) / rect.width * W;
+    var y = (e.clientY - rect.top) / rect.height * H;
+    var c = document.createElement("canvas");
+    c.width = W; c.height = H;
+    var ctx = c.getContext("2d");
+    ctx.drawImage(el, 0, 0);
+    var x0 = Math.max(0, Math.min(W - 21, x - 10));
+    var y0 = Math.max(0, Math.min(H - 21, y - 10));
+    var d;
+    try { d = ctx.getImageData(x0, y0, 21, 21); }
+    catch (err) { msg("Could not read pixels from this image."); return; }
+    var r = 0, g = 0, b = 0, px = d.data;
+    for (var i = 0; i < px.length; i += 4) { r += px[i]; g += px[i + 1]; b += px[i + 2]; }
+    var n = px.length / 4;
+    setReading(Math.round(r / n), Math.round(g / n), Math.round(b / n));
+  });
+
+  $("setManual").addEventListener("click", function () {
+    var r = +$("mR").value, g = +$("mG").value, b = +$("mB").value;
+    if ([r, g, b].some(function (v) { return isNaN(v) || v < 0 || v > 255; })) {
+      msg("RGB values must each be between 0 and 255.");
+      return;
+    }
+    setReading(Math.round(r), Math.round(g), Math.round(b));
+  });
+
+  function setReading(r, g, b) {
+    reading = { r: r, g: g, b: b };
+    $("swatch").style.background = "rgb(" + r + "," + g + "," + b + ")";
+    $("rgbText").textContent = "R " + r + " \u00b7 G " + g + " \u00b7 B " + b;
+    msg("");
+  }
+
+  $("setBlank").addEventListener("click", function () {
+    if (!reading) { msg("Get a reading first."); return; }
+    blank = reading;
+    $("blankState").textContent = "Blank saved: R " + blank.r + ", G " + blank.g + ", B " + blank.b + ".";
+    renderTable();
+  });
+
+  // ---------- absorbance ----------
+  function absorbance(sample, ch) {
+    if (!blank) return null;
+    var I = Math.max(1, sample[ch]);
+    var I0 = Math.max(1, blank[ch]);
+    var ratio = I / I0;
+    if (ratio >= 1) return 0;
+    return -Math.log10(ratio);
+  }
+  function bestChannel() {
+    // channel where the first reading absorbs most
+    var best = "g", bestA = -1;
+    if (!rows.length || !blank) return best;
+    var s = rows[0];
+    ["r", "g", "b"].forEach(function (ch) {
+      var a = absorbance(s, ch);
+      if (a !== null && a > bestA) { bestA = a; best = ch; }
+    });
+    return best;
+  }
+
+  // ---------- readings table ----------
+  var recBody = $("recTable").querySelector("tbody");
+  function addRow(t, rgb) {
+    var row = document.createElement("tr");
+    var s = { t: t, r: rgb.r, g: rgb.g, b: rgb.b, row: row };
+    row.innerHTML = "<td></td><td>" + rgb.r + "</td><td>" + rgb.g + "</td><td>" + rgb.b +
+                    "</td><td></td><td><button class=\"del\" title=\"Remove\">&times;</button></td>";
+    row.querySelector(".del").addEventListener("click", function () {
+      rows = rows.filter(function (x) { return x !== s; });
+      row.remove();
+    });
+    recBody.appendChild(row);
+    rows.push(s);
+    renderTable();
+    return s;
+  }
+  function renderTable() {
+    var ch = bestChannel();
+    rows.forEach(function (s) {
+      s.row.cells[0].textContent = +s.t.toFixed(1);
+      s.row.cells[4].textContent = blank ? absorbance(s, ch).toFixed(3) : "\u2013";
+    });
+  }
+  $("recBtn").addEventListener("click", function () {
+    if (!reading) { msg("Get a reading first (tap the photo or type RGB)."); return; }
+    var t = now();
+    if (t === null) { msg("Start the timer at the moment of mixing."); return; }
+    addRow(t, reading);
+    msg("Recorded at t = " + t.toFixed(1) + " s.");
+  });
+  $("manAdd").addEventListener("click", function () {
+    var t = +$("manT").value;
+    var rgb = { r: +$("manR").value, g: +$("manG").value, b: +$("manB").value };
+    if (isNaN(t) || t < 0) { msg("Enter a valid time."); return; }
+    if ([rgb.r, rgb.g, rgb.b].some(function (v) { return isNaN(v) || v < 0 || v > 255; })) {
+      msg("RGB values must each be between 0 and 255.");
+      return;
+    }
+    addRow(t, rgb);
+    $("manT").value = $("manR").value = $("manG").value = $("manB").value = "";
+  });
+  $("clearData").addEventListener("click", function () {
+    rows = []; recBody.innerHTML = ""; fit = null; $("fitOut").style.display = "none";
+  });
+
+  // ---------- least squares ----------
+  function linfit(xs, ys) {
+    var n = xs.length;
+    if (n < 2) return null;
+    var mx = 0, my = 0, i;
+    for (i = 0; i < n; i++) { mx += xs[i]; my += ys[i]; }
+    mx /= n; my /= n;
+    var sxy = 0, sxx = 0;
+    for (i = 0; i < n; i++) { sxy += (xs[i] - mx) * (ys[i] - my); sxx += (xs[i] - mx) * (xs[i] - mx); }
+    if (sxx === 0) return null;
+    var slope = sxy / sxx, icpt = my - slope * mx;
+    var ssr = 0, sst = 0;
+    for (i = 0; i < n; i++) {
+      ssr += Math.pow(ys[i] - icpt - slope * xs[i], 2);
+      sst += Math.pow(ys[i] - my, 2);
+    }
+    return { slope: slope, icpt: icpt, r2: sst > 0 ? 1 - ssr / sst : 1, n: n };
+  }
+
+  // ---------- model fitting ----------
+  $("fitBtn").addEventListener("click", function () {
+    if (!blank) { msg("Save the water blank first."); return; }
+    var aInf = Math.max(0, +$("aInf").value || 0);
+    var ch = bestChannel();
+    var pts = rows.map(function (s) { return { t: s.t, A: absorbance(s, ch) - aInf }; })
+                  .filter(function (p) { return p.A > 0; }); // need positive values for ln and 1/A
+    if (pts.length < 4) {
+      msg("Need at least four readings with absorbance above A\u221e.");
+      return;
+    }
+    var ts = pts.map(function (p) { return p.t; });
+    var As = pts.map(function (p) { return p.A; });
+
+    var models = [];
+    // Zero order: A = A0 - k t  (linear in t)
+    var z = linfit(ts, As);
+    if (z) models.push({ name: "zero order", k: -z.slope, A0: z.icpt, r2: z.r2, kind: "zero" });
+    // First order: ln A = ln A0 - k t
+    var f1 = linfit(ts, As.map(function (a) { return Math.log(a); }));
+    if (f1) models.push({ name: "first order", k: -f1.slope, A0: Math.exp(f1.icpt), r2: f1.r2, kind: "first" });
+    // Second order: 1/A = 1/A0 + k t
+    var f2 = linfit(ts, As.map(function (a) { return 1 / a; }));
+    if (f2) models.push({ name: "second order", k: f2.slope, A0: 1 / f2.icpt, r2: f2.r2, kind: "second" });
+    if (!models.length) { msg("Could not fit any model."); return; }
+
+    var best = models[0];
+    for (var i = 1; i < models.length; i++) if (models[i].r2 > best.r2) best = models[i];
+    fit = best; fit.ch = ch; fit.aInf = aInf; fit.pts = pts;
+
+    var kUnit = { zero: "absorbance units per second",
+                  first: "per second (s\u207b\u00b9)",
+                  second: "per absorbance unit per second" }[best.kind];
+    var html = "<table><tr><th>Model</th><th>R&sup2;</th></tr>" +
+      models.map(function (m) {
+        return "<tr" + (m === best ? " style=\"font-weight:700\"" : "") + "><td>" + m.name + "</td><td>" + m.r2.toFixed(4) + "</td></tr>";
+      }).join("") + "</table>";
+    html += "Best fit: <strong>" + best.name + "</strong>.<br>" +
+      "Rate constant k &asymp; <strong>" + best.k.toPrecision(3) + "</strong> " + kUnit + ".<br>";
+    if (best.kind === "first") {
+      html += "Half-life: t&frac12; = ln 2 / k &asymp; <strong>" + (Math.LN2 / best.k).toFixed(1) + " s</strong> (constant for a first-order reaction).<br>";
+    }
+    html += "<em>Check the plot: the points should sit close to the curve. If two models are nearly tied, discuss why in your report.</em>";
+    var out = $("fitOut");
+    out.innerHTML = html;
+    out.style.display = "block";
+    drawKinetics();
+  });
+
+  // ---------- plotting ----------
+  function niceStep(r) {
+    if (r <= 0) return 1;
+    var p = Math.pow(10, Math.floor(Math.log10(r)));
+    var f = r / p;
+    return (f < 1.5 ? 1 : f < 3.5 ? 2 : f < 7.5 ? 5 : 10) * p;
+  }
+  function modelA(m, t) {
+    if (m.kind === "zero") return Math.max(0, m.A0 - m.k * t);
+    if (m.kind === "first") return m.A0 * Math.exp(-m.k * t);
+    return m.A0 / (1 + m.A0 * m.k * t); // second
+  }
+  function drawKinetics() {
+    var cv = $("plot"), ctx = cv.getContext("2d");
+    var W = cv.width, H = cv.height;
+    var mL = 40, mR = 10, mT = 12, mB = 30;
+    ctx.clearRect(0, 0, W, H);
+    if (!fit) return;
+    var pts = fit.pts;
+    var tMax = Math.max.apply(null, pts.map(function (p) { return p.t; })) * 1.08;
+    var aMax = Math.max.apply(null, pts.map(function (p) { return p.A; })) * 1.15;
+    function X(t) { return mL + t / tMax * (W - mL - mR); }
+    function Y(a) { return H - mB - a / aMax * (H - mT - mB); }
+    ctx.strokeStyle = "#cfc8da"; ctx.fillStyle = "#948ca6";
+    ctx.lineWidth = 1; ctx.font = "11px system-ui"; ctx.textAlign = "center";
+    var sx = niceStep(tMax / 5), sy = niceStep(aMax / 4);
+    for (var t = 0; t <= tMax + 1e-9; t += sx) {
+      ctx.beginPath(); ctx.moveTo(X(t), H - mB); ctx.lineTo(X(t), mT); ctx.stroke();
+      ctx.fillText(+t.toFixed(0), X(t), H - mB + 14);
+    }
+    ctx.textAlign = "right";
+    for (var a = 0; a <= aMax + 1e-9; a += sy) {
+      ctx.beginPath(); ctx.moveTo(mL, Y(a)); ctx.lineTo(W - mR, Y(a)); ctx.stroke();
+      ctx.fillText(+a.toFixed(3), mL - 4, Y(a) + 4);
+    }
+    // fitted curve
+    ctx.strokeStyle = "#e8a08d"; ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    for (var tt = 0; tt <= tMax; tt += tMax / 120) {
+      var av = modelA(fit, tt);
+      if (tt === 0) ctx.moveTo(X(tt), Y(av)); else ctx.lineTo(X(tt), Y(av));
+    }
+    ctx.stroke();
+    // data points
+    ctx.fillStyle = "#b05f48";
+    pts.forEach(function (p) {
+      ctx.beginPath(); ctx.arc(X(p.t), Y(p.A), 4, 0, 7); ctx.fill();
+    });
+    ctx.fillStyle = "#948ca6"; ctx.textAlign = "center";
+    ctx.fillText("time \u2192", mL + (W - mL - mR) / 2, H - 4);
+    ctx.save();
+    ctx.translate(11, mT + (H - mT - mB) / 2); ctx.rotate(-Math.PI / 2);
+    ctx.fillText("A \u2212 A\u221e \u2192", 0, 0);
+    ctx.restore();
+  }
+
+  // ---------- demo data ----------
+  $("demoData").addEventListener("click", function () {
+    blank = { r: 244, g: 246, b: 242 };
+    $("blankState").textContent = "Blank saved (demo): R 244, G 246, B 242.";
+    rows = []; recBody.innerHTML = "";
+    // first-order decay of the green channel, with a little noise
+    var A0 = 0.72, kk = 0.0032;
+    for (var t = 0; t <= 600; t += 40) {
+      var A = A0 * Math.exp(-kk * t) + (Math.random() - 0.5) * 0.008;
+      A = Math.max(0.02, A);
+      var G = Math.round(246 * Math.pow(10, -A));
+      G = Math.max(1, Math.min(245, G));
+      addRow(t, { r: 60, g: G, b: 62 });
+    }
+    msg("Demo data loaded — press \u201cFit models\u201d.");
+  });
+
+  // ---------- CSV ----------
+  function buildCSV() {
+    var ch = bestChannel();
+    var lines = ["time_s,R,G,B,absorbance"];
+    if (blank) lines.push("blank,,,," + "");
+    rows.forEach(function (s) {
+      lines.push([+s.t.toFixed(1), s.r, s.g, s.b, blank ? absorbance(s, ch).toFixed(4) : ""].join(","));
+    });
+    return lines.join("\n");
+  }
+  $("csvBtn").addEventListener("click", function () {
+    try {
+      var blob = new Blob([buildCSV()], { type: "text/csv" });
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "kinetics.csv";
+      document.body.appendChild(a); a.click(); a.remove();
+    } catch (e) { $("csvShow").click(); }
+  });
+  $("csvShow").addEventListener("click", function () {
+    var box = $("csvBox");
+    box.style.display = "block";
+    box.value = buildCSV();
+    box.select();
+  });
+})();
+</script>
+<script data-pplx-inline-edit>
+(function () {
+  if (window === window.top) return;
+
+  const allowedParentOrigins = ["https://www.perplexity.ai","https://perplexity.ai","https://testing.perplexity.ai","https://staging.perplexity.ai","https://*.preview.i.perplexity.ai","http://perplexity.localhost","http://localhost:1420","http://127.0.0.1:1420","http://localhost:3000","http://127.0.0.1:3000","http://localhost:5173","http://127.0.0.1:5173"];
+  const MAX_FONT_BYTES = 500 * 1024;
+  const MAX_TOTAL_FONT_BYTES = 2 * 1024 * 1024;
+  const DEFAULT_LINE_HEIGHT = 16;
+  let scrollForwarding = false;
+  let scrollRaf = 0;
+  let trustedTopOrigin = null;
+
+  // Allow entries like "https://*.preview.i.perplexity.ai" — the wildcard
+  // matches a single DNS label (no dots), so "https://*.foo" cannot stretch
+  // across multiple labels.
+  function matchesAllowedOrigin(origin) {
+    if (!origin) return false;
+    for (const entry of allowedParentOrigins) {
+      if (!entry.includes("*")) {
+        if (entry === origin) return true;
+        continue;
+      }
+      const pattern = new RegExp(
+        "^" +
+          entry.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^.]+") +
+          "$",
+      );
+      if (pattern.test(origin)) return true;
+    }
+    return false;
+  }
+
+  // Trust decision: when the sender is same-origin-visible (event.origin is a
+  // real origin like https://www.perplexity.ai) we trust event.origin directly.
+  // When event.origin is "null" (opaque broker srcdoc), we fall back to the
+  // broker's stamped `parentOrigin` to identify the top window. The fallback
+  // is claim-only — we rely on the browser's native `targetOrigin` enforcement
+  // on the response path (see postToTrustedTop) to ensure replies can't be
+  // delivered to anyone but the actual top window of that claimed origin.
+  function getTrustedParentOrigin(event) {
+    const forwardedParentOrigin =
+      typeof event.data.parentOrigin === "string" ? event.data.parentOrigin : null;
+    const parentOrigin = event.origin === "null" ? forwardedParentOrigin : event.origin;
+    return matchesAllowedOrigin(parentOrigin) ? parentOrigin : null;
+  }
+
+  // All responses go to window.top with targetOrigin = the allowlisted origin.
+  // An attacker that iframes us inside their own null-origin broker can claim
+  // any parentOrigin they like, but the browser will drop the reply whenever
+  // the real top's origin doesn't match — so the screenshot never leaves.
+  function postToTrustedTop(message) {
+    if (!trustedTopOrigin) return;
+    try {
+      window.top.postMessage(message, trustedTopOrigin);
+    } catch (_error) {}
+  }
+
+  const PICK_CAPABILITIES = ["pick"];
+  const PICK_CHAIN_LENGTH = 4;
+  const PICK_MAX_TEXT_CHARS = 120;
+  const PICK_MAX_HTML_CHARS = 300;
+
+  function truncate(value, maxChars) {
+    return value.length > maxChars ? value.slice(0, maxChars - 1) + "…" : value;
+  }
+
+  function isPickableElement(element) {
+    return (
+      element instanceof Element &&
+      element !== document.documentElement &&
+      element !== document.body
+    );
+  }
+
+  function resolvePickTarget(x, y) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    const element = document.elementFromPoint(x, y);
+    return isPickableElement(element) ? element.closest("svg") || element : null;
+  }
+
+  function pickLabel(element) {
+    if (element.id) return element.localName + "#" + element.id;
+    return [element.localName].concat(Array.from(element.classList).slice(0, 2)).join(".");
+  }
+
+  // Only attributes that help find the element in source. data-* values and URL
+  // query strings or fragments can carry tokens.
+  const PICK_ATTRIBUTES = new Set([
+    "id",
+    "class",
+    "name",
+    "type",
+    "role",
+    "alt",
+    "aria-label",
+    "href",
+    "src",
+  ]);
+
+  function pickAttributeValue(attribute) {
+    return attribute.name === "href" || attribute.name === "src"
+      ? attribute.value.split(/[?#]/)[0]
+      : attribute.value;
+  }
+
+  function describePickElement(element) {
+    const chain = [];
+    for (
+      let current = element;
+      isPickableElement(current) && chain.length < PICK_CHAIN_LENGTH;
+      current = current.parentElement
+    ) {
+      chain.unshift(current);
+    }
+    const attributes = Array.from(element.attributes)
+      .filter((attribute) => PICK_ATTRIBUTES.has(attribute.name))
+      .map((attribute) => ` ${attribute.name}="${pickAttributeValue(attribute).replace(/"/g, "&quot;")}"`)
+      .join("");
+    const text = (element.innerText || element.textContent || "").replace(/\s+/g, " ").trim();
+    return {
+      chain: chain.map(pickLabel),
+      html: truncate(`<${element.localName}${attributes}>`, PICK_MAX_HTML_CHARS),
+      text: text ? truncate(text, PICK_MAX_TEXT_CHARS) : undefined,
+    };
+  }
+
+  // Hover asks once per frame, and innerText on a large section forces layout,
+  // so only the rect is re-read while the pointer stays on the same element.
+  // Clicks ask for fresh details since the page may have changed the element.
+  let lastPick = null;
+
+  function describePickTarget(element, fresh) {
+    if (fresh || lastPick?.element !== element) {
+      lastPick = { element, details: describePickElement(element) };
+    }
+    const rect = element.getBoundingClientRect();
+    return {
+      rect: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
+      ...lastPick.details,
+    };
+  }
+
+  function inlineAll(original, clone) {
+    if (original.nodeType !== 1 || clone.nodeType !== 1) return;
+
+    try {
+      const computedStyle = getComputedStyle(original);
+      // cssText on a computed style is the serialized declaration in modern
+      // Chromium/Safari — a single read beats enumerating ~400 longhand
+      // properties. Firefox returns "" here, so we fall back on empty.
+      const serialized = computedStyle.cssText;
+      if (serialized) {
+        clone.style.cssText = serialized;
+      } else {
+        const parts = new Array(computedStyle.length);
+        for (let index = 0; index < computedStyle.length; index += 1) {
+          const property = computedStyle[index];
+          parts[index] = `${property}:${computedStyle.getPropertyValue(property)};`;
+        }
+        clone.style.cssText = parts.join("");
+      }
+    } catch (_error) {}
+
+    const originalChildren = original.children;
+    const clonedChildren = clone.children;
+    for (
+      let index = 0;
+      index < originalChildren.length && index < clonedChildren.length;
+      index += 1
+    ) {
+      inlineAll(originalChildren[index], clonedChildren[index]);
+    }
+  }
+
+  function extractFontUrl(srcValue) {
+    const matches = [
+      ...srcValue.matchAll(
+        /url\(["']?([^"')]+)["']?\)(?:\s*format\(["']?([^"')]+)["']?\))?/gi,
+      ),
+    ];
+    if (matches.length === 0) return null;
+    const woff2 = matches.find((m) => m[2] && m[2].toLowerCase().includes("woff2"));
+    if (woff2) return woff2[1];
+    const woff = matches.find((m) => m[2] && m[2].toLowerCase().includes("woff"));
+    if (woff) return woff[1];
+    return matches[0][1];
+  }
+
+  // Cache resolved font URL -> data URI across captures. Fonts on a page
+  // essentially never change, and a batch run emits multiple captures back to
+  // back — without this we'd refetch + re-base64 every time.
+  const fontDataUriCache = new Map();
+  const SRC_DECLARATION_RE = /src\s*:\s*[^;}]+/i;
+
+  async function fetchAsDataUri(url) {
+    if (fontDataUriCache.has(url)) return fontDataUriCache.get(url);
+    let dataUri = null;
+    try {
+      const response = await fetch(url, { mode: "cors", credentials: "omit" });
+      if (response.ok) {
+        const blob = await response.blob();
+        if (blob.size <= MAX_FONT_BYTES) {
+          dataUri = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () =>
+              resolve(typeof reader.result === "string" ? reader.result : null);
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(blob);
+          });
+        }
+      }
+    } catch (_error) {
+      dataUri = null;
+    }
+    fontDataUriCache.set(url, dataUri);
+    return dataUri;
+  }
+
+  function collectFontFaceRuleTexts() {
+    const rules = [];
+    for (const sheet of document.styleSheets) {
+      let cssRules;
+      try {
+        cssRules = sheet.cssRules;
+      } catch (_error) {
+        continue;
+      }
+      if (!cssRules) continue;
+      for (const rule of cssRules) {
+        const cssText = rule.cssText || "";
+        if (cssText.startsWith("@font-face")) rules.push(cssText);
+      }
+    }
+    return rules;
+  }
+
+  async function buildInlinedFontCss() {
+    const ruleTexts = collectFontFaceRuleTexts();
+    if (ruleTexts.length === 0) return null;
+
+    const resolved = ruleTexts.map((cssText) => {
+      if (!SRC_DECLARATION_RE.test(cssText)) return null;
+      const srcMatch = cssText.match(/src\s*:\s*([^;}]+)[;}]/i);
+      if (!srcMatch) return null;
+      const url = extractFontUrl(srcMatch[1]);
+      if (!url) return null;
+      try {
+        return { cssText, url: new URL(url, document.baseURI).href };
+      } catch (_error) {
+        return null;
+      }
+    });
+
+    const dataUris = await Promise.all(
+      resolved.map((entry) => (entry ? fetchAsDataUri(entry.url) : Promise.resolve(null))),
+    );
+
+    const inlined = [];
+    let totalBytes = 0;
+    for (let index = 0; index < resolved.length; index += 1) {
+      const entry = resolved[index];
+      const dataUri = dataUris[index];
+      if (!entry || !dataUri) continue;
+      const approxBytes = dataUri.length * 0.75;
+      if (totalBytes + approxBytes > MAX_TOTAL_FONT_BYTES) break;
+      totalBytes += approxBytes;
+      inlined.push(entry.cssText.replace(SRC_DECLARATION_RE, `src: url("${dataUri}")`));
+    }
+    return inlined.length > 0 ? inlined.join("\n") : null;
+  }
+
+  function stripExternal(clone) {
+    const images = clone.querySelectorAll("img");
+    for (let index = 0; index < images.length; index += 1) {
+      const src = images[index].getAttribute("src");
+      if (src && !src.startsWith("data:")) images[index].removeAttribute("src");
+    }
+
+    const elements = clone.querySelectorAll("*");
+    for (let index = 0; index < elements.length; index += 1) {
+      const style = elements[index].style.cssText;
+      if (style && style.includes("url(")) {
+        elements[index].style.cssText = style.replace(
+          /url\(["']?(?!data:)[^)"']*["']?\)/gi,
+          "none",
+        );
+      }
+    }
+  }
+
+  function emitScroll() {
+    scrollRaf = 0;
+    if (!scrollForwarding) return;
+    postToTrustedTop({
+      type: "INLINE_EDIT_SCROLL",
+      scrollX: window.scrollX,
+      scrollY: window.scrollY,
+      capabilities: PICK_CAPABILITIES,
+    });
+  }
+
+  window.addEventListener(
+    "scroll",
+    function () {
+      if (!scrollForwarding || scrollRaf) return;
+      scrollRaf = requestAnimationFrame(emitScroll);
+    },
+    { passive: true, capture: true },
+  );
+
+  async function handleCaptureRequest(event) {
+    const requestId = event.data.requestId;
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+
+    function postResult(dataUrl) {
+      postToTrustedTop({
+        type: "INLINE_EDIT_SCREENSHOT_RESULT",
+        requestId,
+        dataUrl,
+        scrollX,
+        scrollY,
+      });
+    }
+
+    try {
+      // Wait for any pending web fonts to resolve so both inline metrics and
+      // the @font-face inlining below see the same loaded faces.
+      if (document.fonts && document.fonts.ready) {
+        try {
+          await document.fonts.ready;
+        } catch (_error) {}
+      }
+
+      const clone = document.documentElement.cloneNode(true);
+      inlineAll(document.documentElement, clone);
+
+      const removedNodes = clone.querySelectorAll("script,link[rel=\"stylesheet\"],style");
+      for (let index = 0; index < removedNodes.length; index += 1) {
+        removedNodes[index].remove();
+      }
+
+      stripExternal(clone);
+
+      // Re-embed web fonts as data-URI @font-face rules so the SVG rasterizer
+      // can resolve them — external font URLs aren't fetched during
+      // foreignObject rendering, which would otherwise force a fallback face
+      // and change text metrics.
+      const inlinedFontCss = await buildInlinedFontCss();
+      if (inlinedFontCss) {
+        const styleEl = document.createElement("style");
+        styleEl.textContent = inlinedFontCss;
+        const head = clone.querySelector("head");
+        if (head) head.appendChild(styleEl);
+        else clone.insertBefore(styleEl, clone.firstChild);
+      }
+
+      const html = new XMLSerializer().serializeToString(clone);
+      const svg =
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">` +
+        '<foreignObject width="100%" height="100%">' +
+        `<div xmlns="http://www.w3.org/1999/xhtml" style="width:${width}px;height:${height}px;overflow:hidden">` +
+        `<div style="position:relative;left:-${scrollX}px;top:-${scrollY}px">` +
+        html +
+        "</div></div></foreignObject></svg>";
+      const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+      const image = new Image();
+      image.onload = function () {
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(image, 0, 0);
+        postResult(canvas.toDataURL("image/png"));
+      };
+      image.onerror = function () {
+        postResult(null);
+      };
+      image.src = svgUrl;
+    } catch (_error) {
+      postResult(null);
+    }
+  }
+
+  window.addEventListener("message", function (event) {
+    if (!event.data) return;
+    // Only accept messages from the direct parent frame. Blocks sibling /
+    // unrelated-window postMessage senders that could otherwise reach us.
+    if (event.source !== window.parent) return;
+
+    const trustedParentOrigin = getTrustedParentOrigin(event);
+    if (!trustedParentOrigin) return;
+    trustedTopOrigin = trustedParentOrigin;
+
+    if (event.data.type === "INLINE_EDIT_PICK") {
+      const element = resolvePickTarget(event.data.x, event.data.y);
+      postToTrustedTop({
+        type: "INLINE_EDIT_PICK_RESULT",
+        seq: event.data.seq,
+        target: element ? describePickTarget(element, event.data.fresh === true) : null,
+      });
+      return;
+    }
+
+    if (event.data.type === "INLINE_EDIT_SCROLL_START") {
+      scrollForwarding = true;
+      emitScroll();
+      return;
+    }
+
+    if (event.data.type === "INLINE_EDIT_SCROLL_STOP") {
+      scrollForwarding = false;
+      if (scrollRaf) cancelAnimationFrame(scrollRaf);
+      scrollRaf = 0;
+      return;
+    }
+
+    if (event.data.type === "INLINE_EDIT_SCROLL_BY") {
+      const { deltaX, deltaY, deltaMode } = event.data;
+      if (!scrollForwarding || !Number.isFinite(deltaX) || !Number.isFinite(deltaY)) return;
+      if (deltaMode !== 0 && deltaMode !== 1 && deltaMode !== 2) return;
+      const lineHeight =
+        parseFloat(getComputedStyle(document.documentElement).lineHeight) || DEFAULT_LINE_HEIGHT;
+      const scaleX = deltaMode === 1 ? lineHeight : deltaMode === 2 ? window.innerWidth : 1;
+      const scaleY = deltaMode === 1 ? lineHeight : deltaMode === 2 ? window.innerHeight : 1;
+      // The selection overlay receives the wheel event instead of this iframe.
+      // Instant scrolling preserves trackpad deltas even on smooth-scroll sites.
+      window.scrollBy({ left: deltaX * scaleX, top: deltaY * scaleY, behavior: "instant" });
+      emitScroll();
+      return;
+    }
+
+    if (event.data.type !== "INLINE_EDIT_CAPTURE_REQUEST") return;
+
+    handleCaptureRequest(event);
+  });
+})();
+
+
+</script></body>
+</html>
