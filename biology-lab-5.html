@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Biology - Specimen Lab</title>
+<style>
+:root{--bg:#f7f5f8;--ink:#231f2e;--mid:#625c70;--line:#d9d3e0;--hema:#3f3480;--eos:#c93d73}
+*{box-sizing:border-box}
+body{margin:0 auto;max-width:560px;padding:12px 14px 40px;background:var(--bg);color:var(--ink);font:17px/1.5 system-ui,-apple-system,sans-serif}
+h1,h2{font-family:"Iowan Old Style",Georgia,serif;line-height:1.2;margin:.4em 0;color:var(--hema)}
+h1{font-size:1.7rem} h2{font-size:1.2rem}
+.mut{color:var(--mid)}
+button,.btn{font:inherit;color:inherit;min-height:48px;padding:8px 16px;border:1.5px solid var(--hema);background:#fff;border-radius:10px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+button.pri{background:var(--hema);color:#fff} button:disabled{opacity:.45}
+button[aria-pressed=true]{background:var(--hema);color:#fff}
+:focus-visible{outline:3px solid var(--eos);outline-offset:2px}
+.big{display:block;width:100%;text-align:left;margin:12px 0;padding:16px;min-height:76px}
+.big b{display:block;font-size:1.25rem} .big span{color:var(--mid);font-size:.95rem}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:12px 0}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+#stage{position:relative;width:100%;height:52vh;min-height:300px;background:#1b1826;border-radius:12px;overflow:hidden;margin-top:8px}
+#vid,#cv{position:absolute;inset:0;width:100%;height:100%} #vid{object-fit:contain;display:none} #cv{touch-action:none}
+svg#dg{width:100%;max-height:60vh;background:#fff;border:1px solid var(--line);border-radius:12px}
+svg ellipse{cursor:pointer}
+details{border-bottom:1px solid var(--line)} summary{min-height:48px;display:flex;align-items:center;cursor:pointer;font-weight:600}
+ul{margin:4px 0 12px;padding-left:20px}
+textarea{width:100%;min-height:110px;padding:10px;font:inherit;border:1.5px solid var(--line);border-radius:10px}
+input[type=range]{width:100%;min-height:36px} label{display:block;margin:8px 0}
+.opt{width:100%;justify-content:flex-start;text-align:left;margin:8px 0}
+.opt.right{background:#e3f4ea;border-color:#1f7a4d} .opt.wrong{background:#fbe6ec;border-color:var(--eos)}
+</style>
+</head>
+<body>
+<div id="top"></div>
+<div id="stage" hidden><video id="vid" playsinline muted></video><canvas id="cv"></canvas></div>
+<main id="v"></main>
+<!-- rat.js must load before mouse.js -->
+<script src="bio/frog.js"></script>
+<script src="bio/turtle.js"></script>
+<script src="bio/rat.js"></script>
+<script src="bio/mouse.js"></script>
+<script src="bio/rabbit.js"></script>
+<script src="bio/earthworm.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const ALL=['frog','turtle','rat','mouse','rabbit','earthworm'];
+const ANIMALS=ALL.filter(k=>window.BIO&&BIO[k]);
+const MISSING=ALL.filter(k=>!(window.BIO&&BIO[k]));
+let sp=null,ORDER=[];
+let sv={};try{sv=JSON.parse(localStorage.getItem('specimenLab2')||'{}')}catch(e){}
+const S={view:'home',an:null,lvl:sv.lvl||'hs',sel:null,notes:sv.notes||'',best:sv.best||{},cs:'gate',snap:null,A:null,B:null,w:1,flip:false,op:.95,tap:null,drag:null,cutMode:false,cutting:false,cut:null,line:null,rev:0,stream:null,q:null};
+const save=()=>{try{localStorage.setItem('specimenLab2',JSON.stringify({an:S.an,lvl:S.lvl,notes:S.notes,best:S.best}))}catch(e){}};
+const org=id=>sp.organs.find(o=>o.id===id);
+const bk=k=>S.an+':'+k;
+const nm=()=>sp.name.toLowerCase();
+const ends=()=>sp.ends||['nose','vent'];
+const SPR={};
+
+function setAnimal(k){
+ S.an=k;sp=BIO[k];ORDER=sp.organs.map(o=>o.id);
+ S.sel=null;S.q=null;resetCut();S.A=S.B=null;S.snap=null;stopCam();
+ if(S.cs!=='gate')S.cs='shoot';
+}
+
+function go(v){S.view=v;if(v!=='cam')stopCam();render()}
+function render(){
+ if(!sp){$('#v').innerHTML='<p>Could not load any animal files. Check that the <code>bio</code> folder was uploaded.</p>';return}
+ $('#stage').hidden=!(S.view==='cam'&&S.cs!=='gate');
+ $('#top').innerHTML=S.view==='home'?'':'<button id="bk">← Home</button>';
+ if($('#bk'))$('#bk').onclick=()=>go('home');
+ ({home:vHome,study:vStudy,cam:vCam,quiz:vQuiz})[S.view]();
+ requestAnimationFrame(size);
+}
+function lvlBar(){return`<div class="row" role="group" aria-label="Level"><button data-l="hs" aria-pressed="${S.lvl==='hs'}">High school</button><button data-l="col" aria-pressed="${S.lvl==='col'}">College</button></div>`}
+function bindLvl(){document.querySelectorAll('[data-l]').forEach(b=>b.onclick=()=>{S.lvl=b.dataset.l;save();render()})}
+
+/* ---------- Home ---------- */
+function vHome(){
+ $('#v').innerHTML=`<h1>Biology - Specimen Lab</h1>
+ <div class="row" role="group" aria-label="Animal">${ANIMALS.map(k=>`<button data-a="${k}" aria-pressed="${k===S.an}">${esc(BIO[k].name)}</button>`).join('')}</div>
+ ${MISSING.length?`<p class="mut"><small>Not loaded: ${MISSING.map(k=>'bio/'+k+'.js').join(', ')}</small></p>`:''}
+ <button class="big" data-g="study"><b>Study</b><span>${esc(sp.name)} diagram, notes and key facts</span></button>
+ <button class="big" data-g="cam"><b>Use my camera</b><span>Photograph a ${esc(nm())}, open the skin on screen and see labelled organs</span></button>
+ <button class="big" data-g="quiz"><b>Quiz</b><span>Easy, medium and hard</span></button>
+ <p class="mut"><small>For teacher-supervised labs only. Photos stay on your phone and are never uploaded.</small></p>`;
+ document.querySelectorAll('[data-g]').forEach(b=>b.onclick=()=>go(b.dataset.g));
+ document.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>{setAnimal(b.dataset.a);save();render()});
+}
+
+/* ---------- Study ---------- */
+const DX=v=>150+v*520,DY=u=>22+u*400;
+function diagram(){
+ const R=sp.outline,pts=R.map(p=>DX(p[1])+','+DY(p[0])).concat(R.slice().reverse().map(p=>DX(-p[1])+','+DY(p[0])));
+ let s=`<polygon points="${pts.join(' ')}" fill="#e6efd9" stroke="#7a8a66" stroke-width="2"/><text x="150" y="14" text-anchor="middle" font-size="12" fill="#625c70">head</text><text x="150" y="448" text-anchor="middle" font-size="12" fill="#625c70">rear</text>`;
+ sp.organs.slice().reverse().forEach(o=>{const rx=o.rv*520,ry=o.ru*400,P=1.3;s+=`<image href="${sprite(o)}" x="${DX(o.v)-rx*P}" y="${DY(o.u)-ry*P}" width="${rx*2*P}" height="${ry*2*P}" pointer-events="none"/>`});
+ sp.organs.slice().reverse().forEach(o=>{s+=`<ellipse data-id="${o.id}" cx="${DX(o.v)}" cy="${DY(o.u)}" rx="${o.rv*520}" ry="${o.ru*400}" fill="rgba(255,255,255,.01)" stroke="${S.sel===o.id?'#000':'none'}" stroke-width="3" tabindex="0" role="button" aria-label="${esc(o.n)}"/>`});
+ return s;
+}
+function organCard(){const o=org(S.sel);if(!o)return'<p>Tap a part of the diagram, or a button above, to read about it.</p>';
+ return`<h2>${esc(o.n)}</h2><p><b>Where:</b> ${esc(o.wh)}</p><p><b>Job:</b> ${esc(o.fn)}</p><p>${esc(o.hs)}</p>${S.lvl==='col'?'<p>'+esc(o.col)+'</p>':''}`}
+function pick(id){S.sel=id;$('#dg').innerHTML=diagram();$('#oc').innerHTML=organCard();bindDg();document.querySelectorAll('.chip').forEach(c=>c.setAttribute('aria-pressed',c.dataset.id===id))}
+function bindDg(){document.querySelectorAll('#dg ellipse').forEach(e=>{e.onclick=()=>pick(e.dataset.id);e.onkeydown=k=>{if(k.key==='Enter'||k.key===' '){k.preventDefault();pick(e.dataset.id)}}})}
+function vStudy(){
+ $('#v').innerHTML=`<h1>Study the ${esc(nm())}</h1>${lvlBar()}
+ <p class="mut"><small>${esc(sp.view||'Belly view')}, typical ${esc(nm())}, simplified. Real animals vary.</small></p>
+ <svg id="dg" viewBox="0 0 300 450" role="group" aria-label="${esc(sp.name)} diagram">${diagram()}</svg>
+ <div class="row">${ORDER.map(id=>`<button class="chip" data-id="${id}" aria-pressed="${S.sel===id}">${esc(org(id).n)}</button>`).join('')}</div>
+ <div class="card" id="oc" aria-live="polite">${organCard()}</div>
+ <h2>Notes</h2>${sp.notes.map(n=>`<details><summary>${esc(n.t)}</summary><ul>${n.hs.map(x=>`<li>${esc(x)}</li>`).join('')}${S.lvl==='col'?n.col.map(x=>`<li>${esc(x)}</li>`).join(''):''}</ul></details>`).join('')}
+ <h2>My notes</h2><textarea id="nt" aria-label="My notes">${esc(S.notes)}</textarea>
+ <div class="row"><button id="dl">Download my notes</button></div>`;
+ bindLvl();bindDg();document.querySelectorAll('.chip').forEach(c=>c.onclick=()=>pick(c.dataset.id));
+ $('#nt').oninput=e=>{S.notes=e.target.value;save()};$('#dl').onclick=dlNotes;
+}
+function dl(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000)}
+function dlNotes(){
+ const b=S.best,sc=k=>(b[bk(k)]??'-')+'/'+(sp.quiz&&sp.quiz[k]?sp.quiz[k].length:'-');
+ dl(new Blob(['SPECIMEN LAB: MY NOTES\n'+new Date().toLocaleString()+'\n\n'+(S.notes||'(no notes)')+'\n\nQuiz best scores ('+sp.name+'): easy '+sc('easy')+', medium '+sc('medium')+', hard '+sc('hard')+'\n'],{type:'text/plain'}),'my-'+S.an+'-notes.txt');
+}
+
+/* ---------- Camera geometry ---------- */
+const cv=$('#cv'),cx=cv.getContext('2d'),vid=$('#vid');let cw=0,ch=0,dpr=1;
+function size(){if($('#stage').hidden)return;dpr=window.devicePixelRatio||1;const r=$('#stage').getBoundingClientRect();cw=r.width;ch=r.height;cv.width=cw*dpr;cv.height=ch*dpr;paint()}
+function curFit(){if(!S.snap)return null;const s=Math.min(cw/S.snap.width,ch/S.snap.height),w=S.snap.width*s,h=S.snap.height*s;return{x:(cw-w)/2,y:(ch-h)/2,w,h}}
+function geo(f){if(!S.A||!S.B)return null;const a={x:f.x+S.A.x*f.w,y:f.y+S.A.y*f.h},b={x:f.x+S.B.x*f.w,y:f.y+S.B.y*f.h},dx=b.x-a.x,dy=b.y-a.y,L=Math.hypot(dx,dy)||1;return{a,b,L,e1:{x:dx/L,y:dy/L},e2:{x:dy/L,y:-dx/L}}}
+function toXY(g,u,v){const vv=(S.flip?-v:v)*S.w;return{x:g.a.x+g.e1.x*u*g.L+g.e2.x*vv*g.L,y:g.a.y+g.e1.y*u*g.L+g.e2.y*vv*g.L}}
+function toUV(g,p){const rx=p.x-g.a.x,ry=p.y-g.a.y;let v=(rx*g.e2.x+ry*g.e2.y)/(g.L*S.w);if(S.flip)v=-v;return{u:(rx*g.e1.x+ry*g.e1.y)/g.L,v}}
+function halfW(u){const R=sp.outline;if(u<0||u>R[R.length-1][0])return -1;for(let i=1;i<R.length;i++)if(u<=R[i][0]){const t=(u-R[i-1][0])/(R[i][0]-R[i-1][0]);return R[i-1][1]+t*(R[i][1]-R[i-1][1])}return 0}
+function hits(g,p){const {u,v}=toUV(g,p);return ORDER.map(org).filter(o=>((u-o.u)/o.ru)**2+((v-o.v)/o.rv)**2<=1)}
+function outlinePath(ctx,g){const R=sp.outline;ctx.beginPath();R.forEach((p,i)=>{const q=toXY(g,p[0],p[1]);i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y)});for(let i=R.length-1;i>=0;i--){const q=toXY(g,R[i][0],-R[i][1]);ctx.lineTo(q.x,q.y)}ctx.closePath()}
+function organPath(ctx,g,o){ctx.beginPath();for(let t=0;t<=24;t++){const a=t/24*Math.PI*2,q=toXY(g,o.u+o.ru*Math.cos(a),o.v+o.rv*Math.sin(a));t?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y)}ctx.closePath()}
+function labels(ctx,g,k,f){
+ const it=ORDER.map(id=>{const o=org(id);return{n:o.n.split(' (')[0],p:toXY(g,o.u,o.v)}}).sort((a,b)=>a.p.y-b.p.y);
+ const col={L:f.x+6*k,R:f.x+f.w-6*k},last={L:-1e9,R:-1e9};ctx.font=`${13*k}px system-ui`;ctx.textBaseline='middle';ctx.textAlign='left';
+ it.forEach((o,i)=>{const s=i%2?'R':'L';let y=Math.max(o.p.y,last[s]+24*k);y=Math.min(y,f.y+f.h-12*k);last[s]=y;
+  const w=ctx.measureText(o.n).width+12*k,x0=s==='L'?col.L:col.R-w;
+  ctx.strokeStyle='#fff';ctx.lineWidth=1.5*k;ctx.beginPath();ctx.moveTo(s==='L'?x0+w:x0,y);ctx.lineTo(o.p.x,o.p.y);ctx.stroke();
+  ctx.beginPath();ctx.arc(o.p.x,o.p.y,3*k,0,7);ctx.fillStyle='#fff';ctx.fill();
+  ctx.fillStyle='rgba(0,0,0,.75)';ctx.fillRect(x0,y-10*k,w,20*k);ctx.fillStyle='#fff';ctx.fillText(o.n,x0+6*k,y)})}
+function resetCut(){S.rev=0;S.line=null;S.cut=null;S.cutMode=false;S.cutting=false;S.sel=null;S.tap=null}
+
+function openAnim(){const t0=performance.now(),D=matchMedia('(prefers-reduced-motion: reduce)').matches?1:900;
+ const step=t=>{S.rev=Math.min(1,Math.max(0,(t-t0)/D));paint();if(S.rev<1)requestAnimationFrame(step);else{const r=$('#res');if(r){r.innerHTML=tapHTML();bindRd()}const b=$('#ob');if(b)b.textContent='Close the skin'}};requestAnimationFrame(step)}
+
+/* ---------- Organ art (drawn in a local frame: x sideways, y toward the rear, units = pixels) ---------- */
+const rgb=c=>c.split(',').map(Number);
+const mix=(a,b,t)=>a.map((x,i)=>Math.round(x+(b[i]-x)*t));
+const css=(a,al)=>`rgba(${a[0]},${a[1]},${a[2]},${al==null?1:al})`;
+function rg(ctx,x,y,r,st){const g=ctx.createRadialGradient(x,y,0,x,y,Math.max(1,r));st.forEach(([t,c])=>g.addColorStop(t,c));return g}
+function smooth(ctx,p){const n=p.length;ctx.beginPath();ctx.moveTo((p[0][0]+p[n-1][0])/2,(p[0][1]+p[n-1][1])/2);for(let i=0;i<n;i++){const a=p[i],b=p[(i+1)%n];ctx.quadraticCurveTo(a[0],a[1],(a[0]+b[0])/2,(a[1]+b[1])/2)}ctx.closePath()}
+function shade(ctx,W,H,pts,base){
+ const b=rgb(base),P=pts.map(p=>[p[0]*W,p[1]*H]);
+ smooth(ctx,P);ctx.fillStyle=rg(ctx,-.3*W,-.35*H,Math.max(W,H)*1.5,[[0,css(mix(b,[255,255,255],.45))],[.45,css(b)],[1,css(mix(b,[0,0,0],.55))]]);ctx.fill();
+ ctx.lineWidth=Math.max(1,Math.min(W,H)*.06);ctx.strokeStyle=css(mix(b,[0,0,0],.6),.85);ctx.stroke();
+ ctx.save();smooth(ctx,P);ctx.clip();ctx.fillStyle='rgba(255,255,255,.26)';ctx.beginPath();ctx.ellipse(-.3*W,-.4*H,.34*W,.18*H,-.5,0,7);ctx.fill();ctx.restore();
+}
+function line(ctx,col,w,pts){ctx.strokeStyle=col;ctx.lineWidth=Math.max(.6,w);ctx.lineCap='round';ctx.beginPath();ctx.moveTo(pts[0][0],pts[0][1]);for(let i=1;i<pts.length;i++)ctx.lineTo(pts[i][0],pts[i][1]);ctx.stroke()}
+function tube(ctx,w,base,path){const b=rgb(base);ctx.lineCap='round';ctx.lineJoin='round';
+ ctx.lineWidth=w+Math.max(2,w*.2);ctx.strokeStyle=css(mix(b,[0,0,0],.5));path();ctx.stroke();
+ ctx.lineWidth=w;ctx.strokeStyle=css(b);path();ctx.stroke();
+ ctx.save();ctx.translate(0,-w*.14);ctx.lineWidth=w*.45;ctx.strokeStyle=css(mix(b,[255,255,255],.4),.75);path();ctx.stroke();
+ ctx.translate(0,-w*.1);ctx.lineWidth=Math.max(.6,w*.12);ctx.strokeStyle='rgba(255,255,255,.55)';path();ctx.stroke();ctx.restore()}
+function hHeart(ctx,W,H){
+ ctx.lineCap='round';
+ line(ctx,'rgb(55,75,160)',W*.3,[[-.35*W,-.45*H],[-.5*W,-1.05*H],[-.3*W,-1.3*H]]);
+ line(ctx,'rgba(130,150,230,.6)',W*.07,[[-.4*W,-.5*H],[-.55*W,-1.05*H],[-.36*W,-1.28*H]]);
+ line(ctx,'rgb(205,60,62)',W*.34,[[.05*W,-.55*H],[.2*W,-1.25*H],[.8*W,-1.1*H]]);
+ line(ctx,'rgba(255,170,160,.55)',W*.08,[[.05*W,-.6*H],[.2*W,-1.3*H],[.75*W,-1.15*H]]);
+ shade(ctx,W,H,[[0,-.85],[.6,-.7],[.95,-.05],[.55,.55],[0,1],[-.5,.55],[-.95,-.05],[-.6,-.7]],'182,44,56');
+ ctx.save();smooth(ctx,[[0,-.85],[.6,-.7],[.95,-.05],[.55,.55],[0,1],[-.5,.55],[-.95,-.05],[-.6,-.7]].map(p=>[p[0]*W,p[1]*H]));ctx.clip();
+ [[-.5,-.55],[.5,-.55]].forEach(p=>{ctx.fillStyle='rgba(120,25,40,.55)';ctx.beginPath();ctx.ellipse(p[0]*W,p[1]*H,.42*W,.3*H,0,0,7);ctx.fill()});
+ line(ctx,'rgba(255,200,120,.55)',W*.05,[[-.1*W,-.4*H],[-.05*W,.2*H],[.05*W,.75*H]]);
+ line(ctx,'rgba(255,200,120,.45)',W*.04,[[.3*W,-.3*H],[.35*W,.2*H],[.15*W,.6*H]]);
+ line(ctx,'rgba(80,20,30,.5)',W*.04,[[-.9*W,-.15*H],[0,.05*H],[.9*W,-.15*H]]);
+ ctx.restore();
+}
+function hLung(ctx,W,H){
+ [-1,1].forEach(sd=>{
+  const P=[[0,-1],[.8,-.6],[1,.15],[.6,.85],[-.25,1],[-.9,.35],[-.8,-.5]].map(p=>[(sd*.52+p[0]*.46)*W,p[1]*H]);
+  smooth(ctx,P);ctx.fillStyle=rg(ctx,sd*.4*W,-.3*H,W,[[0,'rgb(248,196,202)'],[.5,'rgb(228,150,162)'],[1,'rgb(172,92,112)']]);ctx.fill();
+  ctx.lineWidth=Math.max(1,W*.03);ctx.strokeStyle='rgba(105,45,65,.75)';ctx.stroke();
+  ctx.save();smooth(ctx,P);ctx.clip();
+  const bw=Math.max(.7,W*.035),bc='rgba(255,238,238,.6)';
+  line(ctx,bc,bw*1.6,[[sd*.1*W,-.9*H],[sd*.45*W,-.25*H],[sd*.7*W,.2*H]]);
+  line(ctx,bc,bw,[[sd*.45*W,-.25*H],[sd*.8*W,-.45*H]]);line(ctx,bc,bw,[[sd*.55*W,0],[sd*.3*W,.4*H]]);line(ctx,bc,bw,[[sd*.7*W,.2*H],[sd*.75*W,.65*H]]);
+  line(ctx,'rgba(120,50,70,.22)',bw*1.2,[[sd*.2*W,.3*H],[sd*.5*W,.75*H]]);
+  ctx.fillStyle='rgba(255,255,255,.25)';ctx.beginPath();ctx.ellipse(sd*.38*W,-.5*H,.18*W,.3*H,sd*.4,0,7);ctx.fill();
+  ctx.restore();
+ });
+}
+function hLiver(ctx,W,H){
+ shade(ctx,W,H,[[-1,-.1],[-.75,-.75],[-.1,-.95],[.45,-.7],[1,-.35],[.9,.35],[.35,.75],[-.1,.5],[-.45,.95],[-.9,.6]],'148,58,46');
+ ctx.save();smooth(ctx,[[-1,-.1],[-.75,-.75],[-.1,-.95],[.45,-.7],[1,-.35],[.9,.35],[.35,.75],[-.1,.5],[-.45,.95],[-.9,.6]].map(p=>[p[0]*W,p[1]*H]));ctx.clip();
+ line(ctx,'rgba(40,10,8,.55)',W*.025,[[-.1*W,-.9*H],[-.05*W,-.2*H],[-.1*W,.45*H]]);
+ line(ctx,'rgba(40,10,8,.5)',W*.02,[[.4*W,-.65*H],[.3*W,-.1*H],[.2*W,.5*H]]);
+ line(ctx,'rgba(255,200,170,.25)',W*.04,[[-.8*W,-.45*H],[-.4*W,-.7*H],[.1*W,-.75*H]]);
+ ctx.restore();
+ ctx.fillStyle=rg(ctx,.3*W,.5*H,W*.16,[[0,'rgb(120,190,110)'],[1,'rgb(40,100,55)']]);ctx.beginPath();ctx.ellipse(.32*W,.52*H,.13*W,.16*H,0,0,7);ctx.fill();
+}
+function hStomach(ctx,W,H){
+ const P=[[-.95,-.3],[-.3,-.95],[.6,-.75],[1,0],[.7,.7],[0,1],[-.6,.8],[-.3,.35],[-.55,0]];
+ shade(ctx,W,H,P,'226,172,150');
+ ctx.save();smooth(ctx,P.map(p=>[p[0]*W,p[1]*H]));ctx.clip();
+ for(let i=0;i<5;i++)line(ctx,'rgba(150,80,70,.28)',Math.max(.7,W*.03),[[(-.2+i*.22)*W,-.8*H],[(-.05+i*.22)*W,0],[(-.25+i*.22)*W,.8*H]]);
+ ctx.restore();
+}
+function hSmall(ctx,W,H){
+ ctx.fillStyle='rgba(238,170,165,.4)';ctx.beginPath();ctx.ellipse(0,0,W*.98,H*.98,0,0,7);ctx.fill();
+ const n=5,ys=[...Array(n)].map((_,i)=>-H*.8+i*(1.6*H/(n-1))),w=Math.min(1.6*H/(n-1)*.85,W*.7);
+ tube(ctx,w,'236,160,158',()=>{ctx.beginPath();let dir=1;ctx.moveTo(-W*.75,ys[0]);
+  for(let i=0;i<n;i++){const x2=dir>0?W*.75:-W*.75,x1=-x2;
+   for(let k=1;k<=6;k++){const x=x1+(x2-x1)*k/6;ctx.lineTo(x,ys[i]+Math.sin(k*1.7+i)*H*.05)}
+   if(i<n-1)ctx.bezierCurveTo(x2+dir*W*.3,ys[i],x2+dir*W*.3,ys[i+1],x2,ys[i+1]);dir=-dir}});
+}
+function hLarge(ctx,W,H){
+ const w=Math.max(1,Math.min(W*1.3,H*.9));
+ const path=()=>{ctx.beginPath();ctx.moveTo(-.4*W,-.85*H);ctx.bezierCurveTo(-.7*W,.1*H,-.3*W,.9*H,.35*W,.75*H)};
+ tube(ctx,w,'142,150,92',path);
+ ctx.save();ctx.setLineDash([Math.max(1,w*.12),Math.max(2,w*.28)]);ctx.lineWidth=w;ctx.strokeStyle='rgba(60,50,20,.28)';path();ctx.stroke();ctx.restore();
+}
+function hBean(ctx,W,H,base){shade(ctx,W,H,[[-.9,-.2],[-.4,-.9],[.5,-.85],[1,-.1],[.7,.8],[0,1],[-.6,.7],[-.25,.1]],base)}
+function hBlob(ctx,o,W,H){let h=0;for(const ch of o.id)h=(h*31+ch.charCodeAt(0))>>>0;const r=()=>{h=(h*1664525+1013904223)>>>0;return h/4294967296};
+ const P=[];for(let i=0;i<9;i++){const a=i/9*Math.PI*2,k=.8+.2*r();P.push([Math.cos(a)*k,Math.sin(a)*k])}
+ const b=mix(rgb(o.c),[160,90,90],.35);shade(ctx,W,H,P,b.join(','))}
+function drawOrgan(ctx,o,W,H){
+ if(W<.5||H<.5)return;const t=(o.id+' '+o.n).toLowerCase();ctx.save();
+ if(/heart/.test(t))hHeart(ctx,W,H);else if(/lung/.test(t))hLung(ctx,W,H);else if(/liver/.test(t))hLiver(ctx,W,H);
+ else if(/stomach|gizzard|crop/.test(t))hStomach(ctx,W,H);else if(/lint|large|colon|rectum/.test(t))hLarge(ctx,W,H);
+ else if(/sint|small|intestin|ileum|duoden/.test(t))hSmall(ctx,W,H);else if(/kidney/.test(t))hBean(ctx,W,H,'150,55,62');
+ else if(/spleen/.test(t))hBean(ctx,W,H,'120,40,60');else hBlob(ctx,o,W,H);
+ ctx.restore();
+}
+function drawOrganAt(ctx,g,o){const p=toXY(g,o.u,o.v),sx=S.flip?-1:1;ctx.save();ctx.globalAlpha=S.op;ctx.translate(p.x,p.y);ctx.transform(g.e2.x*sx,g.e2.y*sx,g.e1.x,g.e1.y,0,0);drawOrgan(ctx,o,o.rv*g.L*S.w,o.ru*g.L);ctx.restore()}
+function sprite(o){const key=S.an+o.id;if(SPR[key])return SPR[key];const rx=o.rv*520,ry=o.ru*400,sc=3,P=1.3,c=document.createElement('canvas');c.width=Math.max(2,Math.ceil(rx*2*P*sc));c.height=Math.max(2,Math.ceil(ry*2*P*sc));const x=c.getContext('2d');x.scale(sc,sc);x.translate(rx*P,ry*P);drawOrgan(x,o,rx,ry);return SPR[key]=c.toDataURL()}
+
+function draw(ctx,f,k,ui){
+ if(ui){ctx.fillStyle='#1b1826';ctx.fillRect(0,0,cw,ch)}
+ if(!S.snap)return;ctx.drawImage(S.snap,f.x,f.y,f.w,f.h);const g=geo(f);
+ if(g){
+  ctx.save();ctx.lineWidth=2*k;ctx.setLineDash([8*k,6*k]);ctx.strokeStyle='rgba(255,255,255,.9)';outlinePath(ctx,g);ctx.stroke();ctx.restore();
+  if(S.rev>0&&S.line){
+   const A={x:f.x+S.line.a.x*f.w,y:f.y+S.line.a.y*f.h},B={x:f.x+S.line.b.x*f.w,y:f.y+S.line.b.y*f.h},dx=B.x-A.x,dy=B.y-A.y,L=Math.hypot(dx,dy)||1,e={x:dx/L,y:dy/L},n={x:-e.y,y:e.x},w=S.rev*.26*g.L*S.w,x=S.rev*.25*g.L;
+   const A2={x:A.x-e.x*x,y:A.y-e.y*x},B2={x:B.x+e.x*x,y:B.y+e.y*x};
+   ctx.save();outlinePath(ctx,g);ctx.clip();
+   ctx.beginPath();ctx.moveTo(A2.x+n.x*w,A2.y+n.y*w);ctx.lineTo(B2.x+n.x*w,B2.y+n.y*w);ctx.lineTo(B2.x-n.x*w,B2.y-n.y*w);ctx.lineTo(A2.x-n.x*w,A2.y-n.y*w);ctx.closePath();ctx.clip();
+   ctx.fillStyle='rgb(120,40,55)';ctx.fillRect(f.x,f.y,f.w,f.h);
+   ORDER.slice().reverse().forEach(id=>{const o=org(id);drawOrganAt(ctx,g,o);if(S.sel===id){organPath(ctx,g,o);ctx.lineWidth=3*k;ctx.strokeStyle='#fff';ctx.stroke()}});
+   ctx.restore();labels(ctx,g,k,f)}
+ }
+ if(ui&&S.cut){const a=S.cut.a,b=S.cut.b;ctx.save();ctx.lineCap='round';ctx.lineWidth=4;ctx.strokeStyle='#ff4d6d';ctx.beginPath();ctx.moveTo(f.x+a.x*f.w,f.y+a.y*f.h);ctx.lineTo(f.x+b.x*f.w,f.y+b.y*f.h);ctx.stroke();ctx.restore()}
+ if(ui&&!S.rev&&!S.cutMode)[['A',ends()[0]],['B',ends()[1]]].forEach(([n,t])=>{const p=S[n];if(!p)return;const x=f.x+p.x*f.w,y=f.y+p.y*f.h;ctx.beginPath();ctx.arc(x,y,14,0,7);ctx.lineWidth=3;ctx.strokeStyle='#fff';ctx.stroke();ctx.fillStyle='rgba(63,52,128,.8)';ctx.fill();ctx.fillStyle='#fff';ctx.font='13px system-ui';ctx.textAlign='left';ctx.fillText(t,x+18,y+4)});
+}
+function paint(){if($('#stage').hidden)return;cx.setTransform(dpr,0,0,dpr,0,0);const f=curFit();if(!f)return;draw(cx,f,1,true)}
+function pt(e){const r=cv.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}}
+cv.addEventListener('pointerdown',e=>{const f=curFit();if(!f)return;const p=pt(e);cv.setPointerCapture(e.pointerId);const n={x:(p.x-f.x)/f.w,y:(p.y-f.y)/f.h};
+ if(n.x<0||n.x>1||n.y<0||n.y>1)return;
+ if(!S.cutMode&&!S.rev)for(const k of ['A','B']){const q=S[k];if(q&&Math.hypot(f.x+q.x*f.w-p.x,f.y+q.y*f.h-p.y)<28){S.drag=k;return}}
+ if(S.cs==='nose'){S.A=n;S.cs='vent';render();return}
+ if(S.cs==='vent'){S.B=n;S.cs='explore';render();return}
+ if(S.cs!=='explore')return;
+ if(S.cutMode){S.cut={a:n,b:n};S.cutting=true;paint();return}
+ const g=geo(f);if(!g)return;const h=S.rev?hits(g,p):[];S.sel=h[0]?h[0].id:null;S.tap={h:h.map(o=>o.id)};$('#res').innerHTML=tapHTML();bindRd();paint()});
+cv.addEventListener('pointermove',e=>{const f=curFit();if(!f)return;const p=pt(e),n={x:Math.min(1,Math.max(0,(p.x-f.x)/f.w)),y:Math.min(1,Math.max(0,(p.y-f.y)/f.h))};
+ if(S.drag){S[S.drag]=n;paint()}else if(S.cutting){S.cut.b=n;paint()}});
+cv.addEventListener('pointerup',()=>{S.drag=null;if(!S.cutting)return;S.cutting=false;const f=curFit(),g=geo(f),c=S.cut;
+ const a={x:f.x+c.a.x*f.w,y:f.y+c.a.y*f.h},b={x:f.x+c.b.x*f.w,y:f.y+c.b.y*f.h},uv=toUV(g,{x:(a.x+b.x)/2,y:(a.y+b.y)/2});
+ const ok=Math.hypot(b.x-a.x,b.y-a.y)>=.35*g.L&&halfW(uv.u)>=0&&Math.abs(uv.v)<=halfW(uv.u);
+ if(!ok){S.cut=null;paint();$('#res').innerHTML=`<p><b>Try a longer line</b> along the middle of the ${esc(nm())}, inside the dashed outline.</p>`;return}
+ S.line=c;S.cut=null;S.cutMode=false;S.sel=null;S.tap=null;openAnim()});
+
+
+/* ---------- Camera flow ---------- */
+async function startCam(){try{S.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});vid.srcObject=S.stream;await vid.play();vid.style.display='block';cv.style.display='none'}
+ catch(err){const m=$('#cm');if(m)m.textContent='Camera not available. Choose a photo instead.'}}
+function stopCam(){if(S.stream){S.stream.getTracks().forEach(t=>t.stop());S.stream=null}vid.style.display='none';cv.style.display='block'}
+function setSnap(c){S.snap=c;S.A=S.B=null;resetCut();stopCam();S.cs='nose';render()}
+function shoot(){if(!S.stream||!vid.videoWidth)return;const c=document.createElement('canvas');c.width=vid.videoWidth;c.height=vid.videoHeight;c.getContext('2d').drawImage(vid,0,0);setSnap(c)}
+function loadFile(file){if(!file)return;const im=new Image();im.onload=()=>{const c=document.createElement('canvas');c.width=im.naturalWidth;c.height=im.naturalHeight;c.getContext('2d').drawImage(im,0,0);URL.revokeObjectURL(im.src);setSnap(c)};im.src=URL.createObjectURL(file)}
+function tapHTML(){
+ if(S.cutMode)return`<p><b>Drag a line along the ${esc(nm())}'s middle</b> to open the skin on screen.</p>`;
+ if(!S.rev)return'<p>This is the skin, the only layer the camera really sees. Press <b>Open the skin</b> to preview what is usually underneath.</p>';
+ if(!S.tap)return'<p>The skin is open on screen. Tap an organ or its label to read about it.</p>';
+ const t=S.tap;if(!t.h.length)return'<p>No organ is mapped at this spot. Try tapping a label dot.</p>';
+ const o=org(t.h[0]);let h=`<p><b>${esc(o.n)}</b> (reference prediction). ${esc(o.fn)}</p><p>${esc(o.hs)}</p>`;
+ if(t.h.length>1)h+=`<p class="mut">Also here: ${t.h.slice(1).map(i=>esc(org(i).n)).join(', ')}.</p>`;
+ return h+`<button id="rd" data-o="${o.id}">Read notes on ${esc(o.n)}</button>`;
+}
+function bindRd(){const b=$('#rd');if(b)b.onclick=()=>{S.sel=b.dataset.o;go('study')}}
+function vCam(){
+ const c=S.cs,v=$('#v'),E=ends();
+ if(c==='gate'){v.innerHTML=`<h1>Use my camera</h1><div class="card"><p>Only use this in a lab your teacher has approved. Follow your school's rules for handling specimens.</p><p>This is a virtual preview. It does not show where or how to cut a real specimen. Your photo stays on your phone and is never uploaded.</p>
+  <label><input type="checkbox" id="ag"> My teacher approved this activity.</label><button class="pri" id="st" disabled>Start</button></div>`;
+  $('#ag').onchange=e=>$('#st').disabled=!e.target.checked;$('#st').onclick=()=>{S.cs='shoot';render()};return}
+ if(c==='shoot'){v.innerHTML=`<h2>Take a photo of the ${esc(nm())}'s ${esc(sp.photoView||'belly side')}</h2><p>Fit the whole ${esc(nm())} in view, head up if you can. Hold steady.</p>
+  <button class="pri big" id="sh">Take photo</button><label class="btn">Choose a photo instead<input type="file" id="up" accept="image/*" hidden></label><p id="cm" class="mut" role="status"></p>`;
+  $('#sh').onclick=shoot;$('#up').onchange=e=>loadFile(e.target.files[0]);if(!S.stream)startCam();return}
+ if(c==='nose'){v.innerHTML=`<h2>Step 1 of 2: tap the ${esc(E[0])}</h2><p>Tap the very front tip of the ${esc(nm())}.</p><button id="rp">Retake photo</button>`;$('#rp').onclick=()=>{S.cs='shoot';render()};return}
+ if(c==='vent'){v.innerHTML=`<h2>Step 2 of 2: tap the ${esc(E[1])}</h2><p>Tap the very back end of the ${esc(nm())}, on the same centre line.</p><button id="un">Redo first tap</button>`;$('#un').onclick=()=>{S.A=null;S.cs='nose';render()};return}
+ v.innerHTML=`<div class="card" id="res" aria-live="polite">${tapHTML()}</div>
+ <button class="pri big" id="ob">${S.rev?'Close the skin':'Open the skin (virtual)'}</button>
+ <details><summary>Adjust overlay</summary><label for="w">Body width</label><input type="range" id="w" min=".6" max="1.5" step=".02" value="${S.w}"><label for="op">Organ strength</label><input type="range" id="op" min=".3" max="1" step=".05" value="${S.op}">
+ <label><input type="checkbox" id="fl" ${S.flip?'checked':''}> Mirror left and right</label><p class="mut"><small>Before opening the skin you can also drag the two dots on the photo.</small></p></details>
+ <div class="row"><button id="rd2">Redo points</button><button id="pg">Save picture</button></div>
+ <p class="mut"><small>Virtual preview only. It shows typical ${esc(nm())} anatomy on your photo. It does not show where or how to cut a real specimen. Your teacher guides the real lab.</small></p>`;
+ bindRd();$('#ob').onclick=()=>{if(S.rev||S.cutMode){resetCut();render()}else{S.cutMode=true;S.cut=null;S.sel=null;S.tap=null;$('#res').innerHTML=tapHTML();$('#ob').textContent='Cancel'}};
+ $('#w').oninput=e=>{S.w=+e.target.value;paint()};$('#op').oninput=e=>{S.op=+e.target.value;paint()};$('#fl').onchange=e=>{S.flip=e.target.checked;paint()};
+ $('#rd2').onclick=()=>{resetCut();S.A=S.B=null;S.cs='nose';render()};
+ $('#pg').onclick=()=>{const c=document.createElement('canvas');c.width=S.snap.width;c.height=S.snap.height;draw(c.getContext('2d'),{x:0,y:0,w:c.width,h:c.height},c.width/400,false);c.toBlob(b=>dl(b,S.an+'-photo.png'))};
+}
+window.addEventListener('resize',size);window.addEventListener('pagehide',stopCam);
+
+/* ---------- Quiz ---------- */
+const LV=[['easy','Easy'],['medium','Medium'],['hard','Hard']];
+function vQuiz(){
+ const v=$('#v'),q=S.q;
+ if(!sp.quiz){v.innerHTML='<h1>Quiz</h1><p>No quiz for this animal yet.</p>';return}
+ if(!q){v.innerHTML=`<h1>Quiz: ${esc(sp.name)}</h1>${LV.map(([k,n])=>`<button class="big" data-k="${k}"><b>${n}</b><span>${S.best[bk(k)]!=null?'Best: '+S.best[bk(k)]+' of '+sp.quiz[k].length:sp.quiz[k].length+' questions'}</span></button>`).join('')}`;
+  document.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{S.q={k:b.dataset.k,i:0,s:0};render()});return}
+ const L=sp.quiz[q.k];
+ if(q.i>=L.length){S.best[bk(q.k)]=Math.max(S.best[bk(q.k)]||0,q.s);save();const nx=q.k==='easy'?'medium':q.k==='medium'?'hard':null;
+  v.innerHTML=`<h1>${q.s} of ${L.length}</h1><p>${q.s===L.length?'Perfect score.':'Review the Study notes and try again.'}</p><div class="row">${nx?`<button class="pri" id="nl">Try ${nx}</button>`:''}<button id="ag">Try again</button><button id="ch">Choose level</button></div>`;
+  if(nx)$('#nl').onclick=()=>{S.q={k:nx,i:0,s:0};render()};$('#ag').onclick=()=>{S.q={k:q.k,i:0,s:0};render()};$('#ch').onclick=()=>{S.q=null;render()};return}
+ const x=L[q.i];v.innerHTML=`<h2>Question ${q.i+1} of ${L.length}</h2><p>${esc(x.q)}</p>${x.o.map((o,i)=>`<button class="opt" data-a="${i}">${esc(o)}</button>`).join('')}<div id="fb" role="status"></div>`;
+ document.querySelectorAll('.opt').forEach(b=>b.onclick=()=>{const i=+b.dataset.a,all=document.querySelectorAll('.opt');all.forEach(o=>o.disabled=true);all[x.a].classList.add('right');if(i!==x.a)b.classList.add('wrong');else q.s++;
+  $('#fb').innerHTML=`<p>${i===x.a?'Correct. ':'Not quite. '}${esc(x.e)}</p><button class="pri" id="nx">Next</button>`;$('#nx').onclick=()=>{q.i++;render()}});
+}
+if(ANIMALS.length)setAnimal(ANIMALS.includes(sv.an)?sv.an:ANIMALS[0]);
+render();
+</script>
+</body>
+</html>
