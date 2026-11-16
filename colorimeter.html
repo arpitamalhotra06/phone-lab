@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Colourimeter — Phone Lab</title>
+<style>
+  :root {
+    --bg:#fbf9fd; --fg:#4d4659; --muted:#948ca6; --line:#ece4f2;
+    --accent:#6dbfa8; --accent-ink:#2f7d68; --soft:#e6f4ef; --card:#ffffff; --gold:#c9a662;
+    --pink:#e9a8c8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:#232029; --fg:#efeaf4; --muted:#a79fb5; --line:#3a3445;
+      --accent:#7ed4bd; --accent-ink:#a9e6d5; --soft:#2b3a34; --card:#2c2836; --gold:#f0d295;
+      --pink:#f0aecf;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:20px; background:var(--bg); color:var(--fg);
+         font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width:520px; margin-inline:auto; }
+  a.back { color:var(--muted); text-decoration:none; font-size:.9rem; }
+  h1 { font-size:1.5rem; margin:10px 0 4px; }
+  h2 { font-size:1.15rem; margin:26px 0 10px; padding-bottom:6px; border-bottom:2px solid var(--accent); }
+  p.lead { color:var(--muted); margin:0 0 8px; line-height:1.45; }
+  .card { padding:14px; margin-bottom:12px; border:1px solid var(--line); border-radius:14px; background:var(--card); }
+  .note { font-size:.85rem; color:var(--muted); line-height:1.45; }
+  .btn { background:var(--accent-ink); color:#fff; border:none; border-radius:10px;
+         padding:10px 14px; font-size:.95rem; cursor:pointer; margin:4px 4px 4px 0; }
+  .btn.sec { background:var(--soft); color:var(--accent-ink); }
+  .btn:disabled { opacity:.45; cursor:default; }
+  input, select { font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:10px;
+                  background:var(--bg); color:var(--fg); width:100%; max-width:110px; }
+  select { max-width:none; }
+  .capture { position:relative; width:100%; min-height:180px; background:#fff; border:1px solid var(--line);
+             border-radius:12px; overflow:hidden; display:flex; align-items:center; justify-content:center; }
+  .capture video, .capture img { width:100%; max-height:300px; object-fit:contain; display:block; }
+  .capture .hint { position:absolute; inset:auto 0 6px 0; text-align:center; font-size:.78rem; color:#777; pointer-events:none; }
+  .reading { display:flex; align-items:center; gap:10px; margin-top:10px; flex-wrap:wrap; }
+  .swatch { width:44px; height:44px; border-radius:10px; border:1px solid var(--line); }
+  .rgbline { font-size:1rem; font-weight:600; }
+  .row { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  .row input { width:70px; max-width:none; }
+  table { width:100%; border-collapse:collapse; font-size:.88rem; margin:8px 0; }
+  th, td { padding:6px 4px; border-bottom:1px solid var(--line); text-align:left; vertical-align:middle; }
+  th { color:var(--muted); font-weight:600; }
+  td input { width:64px; max-width:none; padding:6px; }
+  td .del { background:none; border:none; color:var(--muted); font-size:1rem; cursor:pointer; padding:2px 6px; }
+  canvas { width:100%; background:var(--card); border:1px solid var(--line); border-radius:12px; }
+  .result { background:var(--soft); border-radius:12px; padding:12px 14px; margin-top:10px; line-height:1.5; }
+  .result strong { color:var(--accent-ink); }
+  textarea { width:100%; height:90px; font-family:ui-monospace,monospace; font-size:.8rem;
+             border:1px solid var(--line); border-radius:10px; background:var(--bg); color:var(--fg); }
+  #msg { color:var(--gold); font-size:.85rem; min-height:1.2em; margin:6px 0; }
+  small { color:var(--muted); display:block; margin-top:24px; line-height:1.45; }
+</style>
+</head>
+<body>
+  <a class="back" href="index.html">&larr; Phone Lab</a>
+  <h1>Colourimeter</h1>
+  <p class="lead">Find the concentration of an unknown coloured solution. Photograph your standards, build a calibration line from absorbance, and read the unknown off it.</p>
+
+  <div class="card">
+    <h2 style="margin-top:0">1 · Prepare your solutions</h2>
+    <p class="note">Make a stock (for example, one drop of food colouring in 100&nbsp;cm&sup3; of water), then five standards by diluting it: 20%, 40%, 60%, 80% and 100% stock. Keep one unknown sample from your teacher or a helper. Use identical cups, the same water level, the same background and the same lighting for every photo.</p>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">2 · Get a reading</h2>
+    <p class="note">Start the camera, or load a photo, then tap the middle of the liquid in the picture. Or type the R, G, B values by hand.</p>
+    <div class="row" style="margin-bottom:8px">
+      <button class="btn" id="startCam">Start camera</button>
+      <label class="btn sec" style="margin:4px 4px 4px 0">Use a photo
+        <input type="file" id="photoFile" accept="image/*" style="display:none">
+      </label>
+    </div>
+    <div class="capture" id="capture">
+      <video id="cam" playsinline muted autoplay style="display:none"></video>
+      <img id="photo" alt="Loaded photo" style="display:none">
+      <div class="hint" id="capHint">Tap a spot to sample its colour</div>
+    </div>
+    <div class="reading">
+      <div class="swatch" id="swatch" style="background:#eee"></div>
+      <div>
+        <div class="rgbline" id="rgbText">No reading yet</div>
+        <div class="row" style="margin-top:4px">
+          <input type="number" id="mR" placeholder="R" min="0" max="255">
+          <input type="number" id="mG" placeholder="G" min="0" max="255">
+          <input type="number" id="mB" placeholder="B" min="0" max="255">
+          <button class="btn sec" id="setManual">Set</button>
+        </div>
+      </div>
+    </div>
+    <div id="msg"></div>
+    <div class="row">
+      <button class="btn" id="setBlank">Save as blank (water)</button>
+    </div>
+    <p class="note" id="blankState" style="margin-top:6px">Blank: not set yet.</p>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">3 · Standards</h2>
+    <p class="note">For each standard, get a reading (step 2), type its concentration, then press &ldquo;use&rdquo; on that row. Concentration can be in any units you like — % stock or mol&nbsp;dm&#8315;&sup3; — as long as you use the same units for the unknown.</p>
+    <table id="stdTable">
+      <thead><tr><th>Label</th><th>Conc.</th><th>R</th><th>G</th><th>B</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="row">
+      <button class="btn sec" id="addStd">Add standard</button>
+      <button class="btn sec" id="demoData">Load demo data</button>
+    </div>
+    <label style="display:block;margin-top:10px">Colour channel:
+      <select id="channel">
+        <option value="auto" selected>Auto (recommended)</option>
+        <option value="r">Red</option>
+        <option value="g">Green</option>
+        <option value="b">Blue</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">4 · Calibration</h2>
+    <button class="btn" id="fitBtn">Fit calibration line</button>
+    <div id="fitOut" class="result" style="display:none"></div>
+    <canvas id="plot" width="480" height="320" style="margin-top:10px"></canvas>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">5 · Unknown</h2>
+    <p class="note">Get a reading of the unknown sample (step 2), then use it here.</p>
+    <button class="btn" id="setUnknown">Use current reading</button>
+    <div id="unkOut" class="result" style="display:none"></div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">Export</h2>
+    <div class="row">
+      <button class="btn sec" id="csvBtn">Download CSV</button>
+      <button class="btn sec" id="csvShow">Show CSV</button>
+    </div>
+    <textarea id="csvBox" style="display:none;margin-top:8px" readonly></textarea>
+  </div>
+
+  <small>Safety: food colouring and water only, or another instructor-approved system. The camera needs a secure connection (HTTPS, e.g. GitHub Pages) — if it will not start, load a photo or type RGB values. This is a calibrated colourimeter, not a spectrometer: expect a few per cent of scatter.</small>
+
+<script>
+(function () {
+  "use strict";
+  // ---------- state ----------
+  var blank = null;                 // {r,g,b} of the water blank
+  var standards = [];               // [{label, conc, r, g, b}]
+  var unknown = null;               // {r,g,b}
+  var reading = null;               // current reading {r,g,b}
+  var fit = null;                   // {slope, icpt, r2, sA, ch, A(x) helpers}
+  var lastRGB = null;
+
+  var $ = function (id) { return document.getElementById(id); };
+  var msg = function (t) { $("msg").textContent = t || ""; };
+
+  // ---------- reading capture ----------
+  var camVideo = $("cam"), photoImg = $("photo"), capture = $("capture");
+  var source = "none"; // 'camera' | 'photo'
+
+  $("startCam").addEventListener("click", function () {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      msg("Camera not supported here — use a photo or manual entry.");
+      return;
+    }
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+      .then(function (s) {
+        camVideo.srcObject = s;
+        return camVideo.play();
+      })
+      .then(function () {
+        source = "camera";
+        camVideo.style.display = "block";
+        photoImg.style.display = "none";
+        msg("");
+      })
+      .catch(function (e) {
+        msg("Camera unavailable (" + e.name + "). Use a photo or manual entry.");
+      });
+  });
+
+  $("photoFile").addEventListener("change", function (e) {
+    var f = e.target.files && e.target.files[0];
+    if (!f) return;
+    var rd = new FileReader();
+    rd.onload = function () {
+      photoImg.onload = function () {
+        source = "photo";
+        photoImg.style.display = "block";
+        camVideo.style.display = "none";
+        msg("");
+      };
+      photoImg.src = rd.result;
+    };
+    rd.readAsDataURL(f);
+  });
+
+  capture.addEventListener("click", function (e) {
+    var el = source === "camera" ? camVideo : source === "photo" ? photoImg : null;
+    if (!el) { msg("Start the camera or load a photo first."); return; }
+    var W = el.videoWidth || el.naturalWidth;
+    var H = el.videoHeight || el.naturalHeight;
+    if (!W || !H) return;
+    var rect = el.getBoundingClientRect();
+    var x = (e.clientX - rect.left) / rect.width * W;
+    var y = (e.clientY - rect.top) / rect.height * H;
+    var c = document.createElement("canvas");
+    c.width = W; c.height = H;
+    var ctx = c.getContext("2d");
+    ctx.drawImage(el, 0, 0);
+    var x0 = Math.max(0, Math.min(W - 21, x - 10));
+    var y0 = Math.max(0, Math.min(H - 21, y - 10));
+    var d;
+    try { d = ctx.getImageData(x0, y0, 21, 21); }
+    catch (err) { msg("Could not read pixels from this image."); return; }
+    var r = 0, g = 0, b = 0, px = d.data;
+    for (var i = 0; i < px.length; i += 4) { r += px[i]; g += px[i + 1]; b += px[i + 2]; }
+    var n = px.length / 4;
+    setReading(Math.round(r / n), Math.round(g / n), Math.round(b / n));
+  });
+
+  $("setManual").addEventListener("click", function () {
+    var r = +$("mR").value, g = +$("mG").value, b = +$("mB").value;
+    if ([r, g, b].some(function (v) { return isNaN(v) || v < 0 || v > 255; })) {
+      msg("RGB values must each be between 0 and 255.");
+      return;
+    }
+    setReading(Math.round(r), Math.round(g), Math.round(b));
+  });
+
+  function setReading(r, g, b) {
+    reading = { r: r, g: g, b: b };
+    lastRGB = reading;
+    $("swatch").style.background = "rgb(" + r + "," + g + "," + b + ")";
+    $("rgbText").textContent = "R " + r + " \u00b7 G " + g + " \u00b7 B " + b;
+    msg("");
+  }
+
+  // ---------- blank & unknown ----------
+  $("setBlank").addEventListener("click", function () {
+    if (!reading) { msg("Get a reading first."); return; }
+    blank = reading;
+    $("blankState").textContent = "Blank saved: R " + blank.r + ", G " + blank.g + ", B " + blank.b + ".";
+  });
+
+  $("setUnknown").addEventListener("click", function () {
+    if (!reading) { msg("Get a reading first."); return; }
+    if (!blank) { msg("Save the water blank before the unknown."); return; }
+    unknown = reading;
+    renderUnknown();
+  });
+
+  // ---------- absorbance ----------
+  function absorbance(sample, ch) {
+    var I = Math.max(1, sample[ch]);
+    var I0 = Math.max(1, blank[ch]);
+    var ratio = I / I0;
+    if (ratio >= 1) return 0; // lighter than the blank: clamp to zero
+    return -Math.log10(ratio);
+  }
+  function pickChannel() {
+    var sel = $("channel").value;
+    if (sel !== "auto") return sel;
+    var best = "g", bestA = -1;
+    ["r", "g", "b"].forEach(function (ch) {
+      var sum = 0, n = 0;
+      standards.forEach(function (s) {
+        if (!isNaN(s.conc)) { sum += absorbance(s, ch); n++; }
+      });
+      if (n && sum / n > bestA) { bestA = sum / n; best = ch; }
+    });
+    return best;
+  }
+
+  // ---------- standards table ----------
+  var stdBody = $("stdTable").querySelector("tbody");
+  function addStandard(label, conc, rgb) {
+    var row = document.createElement("tr");
+    var s = { label: label, conc: conc, r: rgb ? rgb.r : null, g: rgb ? rgb.g : null, b: rgb ? rgb.b : null, row: row };
+    row.innerHTML =
+      '<td>' + label + '</td>' +
+      '<td><input type="number" step="any" min="0" value="' + (conc !== undefined ? conc : "") + '"></td>' +
+      '<td class="cr"></td><td class="cg"></td><td class="cb"></td>' +
+      '<td><button class="del" title="Remove">&times;</button></td>';
+    row.querySelector("input").addEventListener("change", function () { s.conc = +this.value; });
+    row.querySelector(".del").addEventListener("click", function () {
+      standards = standards.filter(function (x) { return x !== s; });
+      row.remove();
+    });
+    // "use current reading" via tapping the RGB cells
+    [".cr", ".cg", ".cb"].forEach(function (cls) {
+      row.querySelector(cls).addEventListener("click", function () {
+        if (!reading) { msg("Get a reading first, then tap the cells in this row."); return; }
+        s.r = reading.r; s.g = reading.g; s.b = reading.b;
+        fillCells();
+        msg(label + " updated with the current reading.");
+      });
+    });
+    function fillCells() {
+      row.querySelector(".cr").textContent = s.r === null ? "tap" : s.r;
+      row.querySelector(".cg").textContent = s.g === null ? "tap" : s.g;
+      row.querySelector(".cb").textContent = s.b === null ? "tap" : s.b;
+    }
+    if (rgb) fillCells(); else fillCells();
+    stdBody.appendChild(row);
+    standards.push(s);
+    return s;
+  }
+  $("addStd").addEventListener("click", function () {
+    addStandard("S" + (standards.length + 1));
+    msg("Get a reading above, then tap the RGB cells in the new row.");
+  });
+
+  // ---------- least squares ----------
+  function linfit(xs, ys) {
+    var n = xs.length;
+    if (n < 2) return null;
+    var mx = 0, my = 0, i;
+    for (i = 0; i < n; i++) { mx += xs[i]; my += ys[i]; }
+    mx /= n; my /= n;
+    var sxy = 0, sxx = 0;
+    for (i = 0; i < n; i++) { sxy += (xs[i] - mx) * (ys[i] - my); sxx += (xs[i] - mx) * (xs[i] - mx); }
+    if (sxx === 0) return null;
+    var slope = sxy / sxx, icpt = my - slope * mx;
+    var ssr = 0, sst = 0;
+    for (i = 0; i < n; i++) {
+      ssr += Math.pow(ys[i] - icpt - slope * xs[i], 2);
+      sst += Math.pow(ys[i] - my, 2);
+    }
+    return { slope: slope, icpt: icpt, r2: sst > 0 ? 1 - ssr / sst : 1, n: n,
+             sA: Math.sqrt(ssr / Math.max(1, n - 2)) };
+  }
+
+  // ---------- calibration fit ----------
+  $("fitBtn").addEventListener("click", function () {
+    if (!blank) { msg("Save the water blank first."); return; }
+    var pts = standards.filter(function (s) { return !isNaN(s.conc) && s.r !== null; });
+    if (pts.length < 2) { msg("Add at least two standards with a concentration and a reading."); return; }
+    var ch = pickChannel();
+    var xs = pts.map(function (s) { return s.conc; });
+    var ys = pts.map(function (s) { return absorbance(s, ch); });
+    var f = linfit(xs, ys);
+    if (!f) { msg("Concentrations must not all be identical."); return; }
+    if (f.slope <= 0) { msg("The line slopes the wrong way — check the blank and the standards."); return; }
+    fit = f; fit.ch = ch; fit.points = pts;
+    var out = $("fitOut");
+    out.style.display = "block";
+    out.innerHTML = "Channel: <strong>" + {r:"red", g:"green", b:"blue"}[ch] + "</strong> (absorbs most).<br>" +
+      "Beer\u2013Lambert calibration: <strong>A = " + f.slope.toFixed(3) + " \u00d7 c " +
+      (f.icpt >= 0 ? "+ " : "\u2212 ") + Math.abs(f.icpt).toFixed(3) + "</strong><br>" +
+      "R&sup2; = <strong>" + f.r2.toFixed(4) + "</strong> (" + f.n + " standards).";
+    drawCalibration();
+    if (unknown) renderUnknown();
+  });
+
+  // ---------- unknown ----------
+  function renderUnknown() {
+    var out = $("unkOut");
+    if (!fit) {
+      out.style.display = "block";
+      out.innerHTML = "Fit the calibration line first (step 4).";
+      return;
+    }
+    var A = absorbance(unknown, fit.ch);
+    var c = (A - fit.icpt) / fit.slope;
+    if (c < 0) {
+      out.innerHTML = "Absorbance " + A.toFixed(3) + " lies below the calibration line — the unknown is more dilute than your standards. Extend the dilution series downwards.";
+      out.style.display = "block";
+      drawCalibration();
+      return;
+    }
+    var cMax = Math.max.apply(null, fit.points.map(function (s) { return s.conc; }));
+    var warn = c > cMax ? "<br><em>Warning: this is above your highest standard — dilute the unknown or extend the calibration.</em>" : "";
+    var band = fit.sA / Math.abs(fit.slope);
+    out.innerHTML = "Absorbance A = <strong>" + A.toFixed(3) + "</strong><br>" +
+      "Estimated concentration: <strong>c \u2248 " + c.toFixed(3) + "</strong> (roughly " +
+      (c - band).toFixed(3) + " to " + (c + band).toFixed(3) + " from the scatter of the standards)." + warn;
+    out.style.display = "block";
+    drawCalibration();
+  }
+
+  // ---------- plotting ----------
+  function niceStep(r) {
+    if (r <= 0) return 1;
+    var p = Math.pow(10, Math.floor(Math.log10(r)));
+    var f = r / p;
+    return (f < 1.5 ? 1 : f < 3.5 ? 2 : f < 7.5 ? 5 : 10) * p;
+  }
+  function drawCalibration() {
+    var cv = $("plot"), ctx = cv.getContext("2d");
+    var W = cv.width, H = cv.height;
+    var mL = 40, mR = 10, mT = 12, mB = 30;
+    ctx.clearRect(0, 0, W, H);
+    if (!fit) return;
+    var pts = fit.points.map(function (s) { return { x: s.conc, y: absorbance(s, fit.ch) }; });
+    var xs = pts.map(function (p) { return p.x; }), ys = pts.map(function (p) { return p.y; });
+    var xMax = Math.max.apply(null, xs) * 1.15 || 1;
+    var yMax = Math.max.apply(null, ys.concat([0.1])) * 1.2;
+    if (unknown) { var Au = absorbance(unknown, fit.ch); yMax = Math.max(yMax, Au * 1.2); }
+    function X(x) { return mL + x / xMax * (W - mL - mR); }
+    function Y(y) { return H - mB - y / yMax * (H - mT - mB); }
+    // axes + ticks
+    ctx.strokeStyle = "#cfc8da"; ctx.fillStyle = "#948ca6";
+    ctx.lineWidth = 1; ctx.font = "11px system-ui";
+    ctx.textAlign = "center";
+    var sx = niceStep(xMax / 4), sy = niceStep(yMax / 4);
+    for (var x = 0; x <= xMax + 1e-9; x += sx) {
+      ctx.beginPath(); ctx.moveTo(X(x), H - mB); ctx.lineTo(X(x), mT); ctx.stroke();
+      ctx.fillText(+x.toFixed(3), X(x), H - mB + 14);
+    }
+    ctx.textAlign = "right";
+    for (var y = 0; y <= yMax + 1e-9; y += sy) {
+      ctx.beginPath(); ctx.moveTo(mL, Y(y)); ctx.lineTo(W - mR, Y(y)); ctx.stroke();
+      ctx.fillText(+y.toFixed(3), mL - 4, Y(y) + 4);
+    }
+    // regression line
+    ctx.strokeStyle = "#6dbfa8"; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(X(0), Y(fit.icpt)); ctx.lineTo(X(xMax), Y(fit.icpt + fit.slope * xMax)); ctx.stroke();
+    // standard points
+    ctx.fillStyle = "#2f7d68";
+    pts.forEach(function (p) {
+      ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), 4, 0, 7); ctx.fill();
+    });
+    // unknown point
+    if (unknown) {
+      var Au = absorbance(unknown, fit.ch);
+      var cu = (Au - fit.icpt) / fit.slope;
+      if (cu >= 0 && cu <= xMax) {
+        ctx.fillStyle = "#d67bab";
+        ctx.beginPath(); ctx.arc(X(cu), Y(Au), 5, 0, 7); ctx.fill();
+      }
+    }
+    // axis labels
+    ctx.fillStyle = "#948ca6"; ctx.textAlign = "center";
+    ctx.fillText("concentration \u2192", mL + (W - mL - mR) / 2, H - 4);
+    ctx.save();
+    ctx.translate(11, mT + (H - mT - mB) / 2); ctx.rotate(-Math.PI / 2);
+    ctx.fillText("absorbance \u2192", 0, 0);
+    ctx.restore();
+  }
+
+  // ---------- demo data ----------
+  $("demoData").addEventListener("click", function () {
+    blank = { r: 244, g: 246, b: 242 };
+    $("blankState").textContent = "Blank saved (demo): R 244, G 246, B 242.";
+    stdBody.innerHTML = "";
+    standards = [];
+    var demo = [
+      [0.2, 205, 230, 225], [0.4, 168, 214, 208], [0.6, 138, 198, 195],
+      [0.8, 113, 183, 184], [1.0, 92, 170, 172]
+    ];
+    demo.forEach(function (d) { addStandard("S" + (standards.length + 1), d[0], { r: d[1], g: d[2], b: d[3] }); });
+    unknown = { r: 118, g: 186, b: 187 };
+    msg("Demo data loaded — press \u201cFit calibration line\u201d.");
+  });
+
+  // ---------- CSV ----------
+  function buildCSV() {
+    var lines = ["type,label,concentration,R,G,B"];
+    if (blank) lines.push("blank,water,," + blank.r + "," + blank.g + "," + blank.b);
+    standards.forEach(function (s) {
+      lines.push("standard," + s.label + "," + (isNaN(s.conc) ? "" : s.conc) + "," + s.r + "," + s.g + "," + s.b);
+    });
+    if (unknown) lines.push("unknown,unknown,," + unknown.r + "," + unknown.g + "," + unknown.b);
+    return lines.join("\n");
+  }
+  $("csvBtn").addEventListener("click", function () {
+    try {
+      var blob = new Blob([buildCSV()], { type: "text/csv" });
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "colourimeter.csv";
+      document.body.appendChild(a); a.click(); a.remove();
+    } catch (e) { $("csvShow").click(); }
+  });
+  $("csvShow").addEventListener("click", function () {
+    var box = $("csvBox");
+    box.style.display = "block";
+    box.value = buildCSV();
+    box.select();
+  });
+})();
+</script>
+<script data-pplx-inline-edit>
+(function () {
+  if (window === window.top) return;
+
+  const allowedParentOrigins = ["https://www.perplexity.ai","https://perplexity.ai","https://testing.perplexity.ai","https://staging.perplexity.ai","https://*.preview.i.perplexity.ai","http://perplexity.localhost","http://localhost:1420","http://127.0.0.1:1420","http://localhost:3000","http://127.0.0.1:3000","http://localhost:5173","http://127.0.0.1:5173"];
+  const MAX_FONT_BYTES = 500 * 1024;
+  const MAX_TOTAL_FONT_BYTES = 2 * 1024 * 1024;
+  const DEFAULT_LINE_HEIGHT = 16;
+  let scrollForwarding = false;
+  let scrollRaf = 0;
+  let trustedTopOrigin = null;
+
+  // Allow entries like "https://*.preview.i.perplexity.ai" — the wildcard
+  // matches a single DNS label (no dots), so "https://*.foo" cannot stretch
+  // across multiple labels.
+  function matchesAllowedOrigin(origin) {
+    if (!origin) return false;
+    for (const entry of allowedParentOrigins) {
+      if (!entry.includes("*")) {
+        if (entry === origin) return true;
+        continue;
+      }
+      const pattern = new RegExp(
+        "^" +
+          entry.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^.]+") +
+          "$",
+      );
+      if (pattern.test(origin)) return true;
+    }
+    return false;
+  }
+
+  // Trust decision: when the sender is same-origin-visible (event.origin is a
+  // real origin like https://www.perplexity.ai) we trust event.origin directly.
+  // When event.origin is "null" (opaque broker srcdoc), we fall back to the
+  // broker's stamped `parentOrigin` to identify the top window. The fallback
+  // is claim-only — we rely on the browser's native `targetOrigin` enforcement
+  // on the response path (see postToTrustedTop) to ensure replies can't be
+  // delivered to anyone but the actual top window of that claimed origin.
+  function getTrustedParentOrigin(event) {
+    const forwardedParentOrigin =
+      typeof event.data.parentOrigin === "string" ? event.data.parentOrigin : null;
+    const parentOrigin = event.origin === "null" ? forwardedParentOrigin : event.origin;
+    return matchesAllowedOrigin(parentOrigin) ? parentOrigin : null;
+  }
+
+  // All responses go to window.top with targetOrigin = the allowlisted origin.
+  // An attacker that iframes us inside their own null-origin broker can claim
+  // any parentOrigin they like, but the browser will drop the reply whenever
+  // the real top's origin doesn't match — so the screenshot never leaves.
+  function postToTrustedTop(message) {
+    if (!trustedTopOrigin) return;
+    try {
+      window.top.postMessage(message, trustedTopOrigin);
+    } catch (_error) {}
+  }
+
+  const PICK_CAPABILITIES = ["pick"];
+  const PICK_CHAIN_LENGTH = 4;
+  const PICK_MAX_TEXT_CHARS = 120;
+  const PICK_MAX_HTML_CHARS = 300;
+
+  function truncate(value, maxChars) {
+    return value.length > maxChars ? value.slice(0, maxChars - 1) + "…" : value;
+  }
+
+  function isPickableElement(element) {
+    return (
+      element instanceof Element &&
+      element !== document.documentElement &&
+      element !== document.body
+    );
+  }
+
+  function resolvePickTarget(x, y) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    const element = document.elementFromPoint(x, y);
+    return isPickableElement(element) ? element.closest("svg") || element : null;
+  }
+
+  function pickLabel(element) {
+    if (element.id) return element.localName + "#" + element.id;
+    return [element.localName].concat(Array.from(element.classList).slice(0, 2)).join(".");
+  }
+
+  // Only attributes that help find the element in source. data-* values and URL
+  // query strings or fragments can carry tokens.
+  const PICK_ATTRIBUTES = new Set([
+    "id",
+    "class",
+    "name",
+    "type",
+    "role",
+    "alt",
+    "aria-label",
+    "href",
+    "src",
+  ]);
+
+  function pickAttributeValue(attribute) {
+    return attribute.name === "href" || attribute.name === "src"
+      ? attribute.value.split(/[?#]/)[0]
+      : attribute.value;
+  }
+
+  function describePickElement(element) {
+    const chain = [];
+    for (
+      let current = element;
+      isPickableElement(current) && chain.length < PICK_CHAIN_LENGTH;
+      current = current.parentElement
+    ) {
+      chain.unshift(current);
+    }
+    const attributes = Array.from(element.attributes)
+      .filter((attribute) => PICK_ATTRIBUTES.has(attribute.name))
+      .map((attribute) => ` ${attribute.name}="${pickAttributeValue(attribute).replace(/"/g, "&quot;")}"`)
+      .join("");
+    const text = (element.innerText || element.textContent || "").replace(/\s+/g, " ").trim();
+    return {
+      chain: chain.map(pickLabel),
+      html: truncate(`<${element.localName}${attributes}>`, PICK_MAX_HTML_CHARS),
+      text: text ? truncate(text, PICK_MAX_TEXT_CHARS) : undefined,
+    };
+  }
+
+  // Hover asks once per frame, and innerText on a large section forces layout,
+  // so only the rect is re-read while the pointer stays on the same element.
+  // Clicks ask for fresh details since the page may have changed the element.
+  let lastPick = null;
+
+  function describePickTarget(element, fresh) {
+    if (fresh || lastPick?.element !== element) {
+      lastPick = { element, details: describePickElement(element) };
+    }
+    const rect = element.getBoundingClientRect();
+    return {
+      rect: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
+      ...lastPick.details,
+    };
+  }
+
+  function inlineAll(original, clone) {
+    if (original.nodeType !== 1 || clone.nodeType !== 1) return;
+
+    try {
+      const computedStyle = getComputedStyle(original);
+      // cssText on a computed style is the serialized declaration in modern
+      // Chromium/Safari — a single read beats enumerating ~400 longhand
+      // properties. Firefox returns "" here, so we fall back on empty.
+      const serialized = computedStyle.cssText;
+      if (serialized) {
+        clone.style.cssText = serialized;
+      } else {
+        const parts = new Array(computedStyle.length);
+        for (let index = 0; index < computedStyle.length; index += 1) {
+          const property = computedStyle[index];
+          parts[index] = `${property}:${computedStyle.getPropertyValue(property)};`;
+        }
+        clone.style.cssText = parts.join("");
+      }
+    } catch (_error) {}
+
+    const originalChildren = original.children;
+    const clonedChildren = clone.children;
+    for (
+      let index = 0;
+      index < originalChildren.length && index < clonedChildren.length;
+      index += 1
+    ) {
+      inlineAll(originalChildren[index], clonedChildren[index]);
+    }
+  }
+
+  function extractFontUrl(srcValue) {
+    const matches = [
+      ...srcValue.matchAll(
+        /url\(["']?([^"')]+)["']?\)(?:\s*format\(["']?([^"')]+)["']?\))?/gi,
+      ),
+    ];
+    if (matches.length === 0) return null;
+    const woff2 = matches.find((m) => m[2] && m[2].toLowerCase().includes("woff2"));
+    if (woff2) return woff2[1];
+    const woff = matches.find((m) => m[2] && m[2].toLowerCase().includes("woff"));
+    if (woff) return woff[1];
+    return matches[0][1];
+  }
+
+  // Cache resolved font URL -> data URI across captures. Fonts on a page
+  // essentially never change, and a batch run emits multiple captures back to
+  // back — without this we'd refetch + re-base64 every time.
+  const fontDataUriCache = new Map();
+  const SRC_DECLARATION_RE = /src\s*:\s*[^;}]+/i;
+
+  async function fetchAsDataUri(url) {
+    if (fontDataUriCache.has(url)) return fontDataUriCache.get(url);
+    let dataUri = null;
+    try {
+      const response = await fetch(url, { mode: "cors", credentials: "omit" });
+      if (response.ok) {
+        const blob = await response.blob();
+        if (blob.size <= MAX_FONT_BYTES) {
+          dataUri = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () =>
+              resolve(typeof reader.result === "string" ? reader.result : null);
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(blob);
+          });
+        }
+      }
+    } catch (_error) {
+      dataUri = null;
+    }
+    fontDataUriCache.set(url, dataUri);
+    return dataUri;
+  }
+
+  function collectFontFaceRuleTexts() {
+    const rules = [];
+    for (const sheet of document.styleSheets) {
+      let cssRules;
+      try {
+        cssRules = sheet.cssRules;
+      } catch (_error) {
+        continue;
+      }
+      if (!cssRules) continue;
+      for (const rule of cssRules) {
+        const cssText = rule.cssText || "";
+        if (cssText.startsWith("@font-face")) rules.push(cssText);
+      }
+    }
+    return rules;
+  }
+
+  async function buildInlinedFontCss() {
+    const ruleTexts = collectFontFaceRuleTexts();
+    if (ruleTexts.length === 0) return null;
+
+    const resolved = ruleTexts.map((cssText) => {
+      if (!SRC_DECLARATION_RE.test(cssText)) return null;
+      const srcMatch = cssText.match(/src\s*:\s*([^;}]+)[;}]/i);
+      if (!srcMatch) return null;
+      const url = extractFontUrl(srcMatch[1]);
+      if (!url) return null;
+      try {
+        return { cssText, url: new URL(url, document.baseURI).href };
+      } catch (_error) {
+        return null;
+      }
+    });
+
+    const dataUris = await Promise.all(
+      resolved.map((entry) => (entry ? fetchAsDataUri(entry.url) : Promise.resolve(null))),
+    );
+
+    const inlined = [];
+    let totalBytes = 0;
+    for (let index = 0; index < resolved.length; index += 1) {
+      const entry = resolved[index];
+      const dataUri = dataUris[index];
+      if (!entry || !dataUri) continue;
+      const approxBytes = dataUri.length * 0.75;
+      if (totalBytes + approxBytes > MAX_TOTAL_FONT_BYTES) break;
+      totalBytes += approxBytes;
+      inlined.push(entry.cssText.replace(SRC_DECLARATION_RE, `src: url("${dataUri}")`));
+    }
+    return inlined.length > 0 ? inlined.join("\n") : null;
+  }
+
+  function stripExternal(clone) {
+    const images = clone.querySelectorAll("img");
+    for (let index = 0; index < images.length; index += 1) {
+      const src = images[index].getAttribute("src");
+      if (src && !src.startsWith("data:")) images[index].removeAttribute("src");
+    }
+
+    const elements = clone.querySelectorAll("*");
+    for (let index = 0; index < elements.length; index += 1) {
+      const style = elements[index].style.cssText;
+      if (style && style.includes("url(")) {
+        elements[index].style.cssText = style.replace(
+          /url\(["']?(?!data:)[^)"']*["']?\)/gi,
+          "none",
+        );
+      }
+    }
+  }
+
+  function emitScroll() {
+    scrollRaf = 0;
+    if (!scrollForwarding) return;
+    postToTrustedTop({
+      type: "INLINE_EDIT_SCROLL",
+      scrollX: window.scrollX,
+      scrollY: window.scrollY,
+      capabilities: PICK_CAPABILITIES,
+    });
+  }
+
+  window.addEventListener(
+    "scroll",
+    function () {
+      if (!scrollForwarding || scrollRaf) return;
+      scrollRaf = requestAnimationFrame(emitScroll);
+    },
+    { passive: true, capture: true },
+  );
+
+  async function handleCaptureRequest(event) {
+    const requestId = event.data.requestId;
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+
+    function postResult(dataUrl) {
+      postToTrustedTop({
+        type: "INLINE_EDIT_SCREENSHOT_RESULT",
+        requestId,
+        dataUrl,
+        scrollX,
+        scrollY,
+      });
+    }
+
+    try {
+      // Wait for any pending web fonts to resolve so both inline metrics and
+      // the @font-face inlining below see the same loaded faces.
+      if (document.fonts && document.fonts.ready) {
+        try {
+          await document.fonts.ready;
+        } catch (_error) {}
+      }
+
+      const clone = document.documentElement.cloneNode(true);
+      inlineAll(document.documentElement, clone);
+
+      const removedNodes = clone.querySelectorAll("script,link[rel=\"stylesheet\"],style");
+      for (let index = 0; index < removedNodes.length; index += 1) {
+        removedNodes[index].remove();
+      }
+
+      stripExternal(clone);
+
+      // Re-embed web fonts as data-URI @font-face rules so the SVG rasterizer
+      // can resolve them — external font URLs aren't fetched during
+      // foreignObject rendering, which would otherwise force a fallback face
+      // and change text metrics.
+      const inlinedFontCss = await buildInlinedFontCss();
+      if (inlinedFontCss) {
+        const styleEl = document.createElement("style");
+        styleEl.textContent = inlinedFontCss;
+        const head = clone.querySelector("head");
+        if (head) head.appendChild(styleEl);
+        else clone.insertBefore(styleEl, clone.firstChild);
+      }
+
+      const html = new XMLSerializer().serializeToString(clone);
+      const svg =
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">` +
+        '<foreignObject width="100%" height="100%">' +
+        `<div xmlns="http://www.w3.org/1999/xhtml" style="width:${width}px;height:${height}px;overflow:hidden">` +
+        `<div style="position:relative;left:-${scrollX}px;top:-${scrollY}px">` +
+        html +
+        "</div></div></foreignObject></svg>";
+      const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+      const image = new Image();
+      image.onload = function () {
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(image, 0, 0);
+        postResult(canvas.toDataURL("image/png"));
+      };
+      image.onerror = function () {
+        postResult(null);
+      };
+      image.src = svgUrl;
+    } catch (_error) {
+      postResult(null);
+    }
+  }
+
+  window.addEventListener("message", function (event) {
+    if (!event.data) return;
+    // Only accept messages from the direct parent frame. Blocks sibling /
+    // unrelated-window postMessage senders that could otherwise reach us.
+    if (event.source !== window.parent) return;
+
+    const trustedParentOrigin = getTrustedParentOrigin(event);
+    if (!trustedParentOrigin) return;
+    trustedTopOrigin = trustedParentOrigin;
+
+    if (event.data.type === "INLINE_EDIT_PICK") {
+      const element = resolvePickTarget(event.data.x, event.data.y);
+      postToTrustedTop({
+        type: "INLINE_EDIT_PICK_RESULT",
+        seq: event.data.seq,
+        target: element ? describePickTarget(element, event.data.fresh === true) : null,
+      });
+      return;
+    }
+
+    if (event.data.type === "INLINE_EDIT_SCROLL_START") {
+      scrollForwarding = true;
+      emitScroll();
+      return;
+    }
+
+    if (event.data.type === "INLINE_EDIT_SCROLL_STOP") {
+      scrollForwarding = false;
+      if (scrollRaf) cancelAnimationFrame(scrollRaf);
+      scrollRaf = 0;
+      return;
+    }
+
+    if (event.data.type === "INLINE_EDIT_SCROLL_BY") {
+      const { deltaX, deltaY, deltaMode } = event.data;
+      if (!scrollForwarding || !Number.isFinite(deltaX) || !Number.isFinite(deltaY)) return;
+      if (deltaMode !== 0 && deltaMode !== 1 && deltaMode !== 2) return;
+      const lineHeight =
+        parseFloat(getComputedStyle(document.documentElement).lineHeight) || DEFAULT_LINE_HEIGHT;
+      const scaleX = deltaMode === 1 ? lineHeight : deltaMode === 2 ? window.innerWidth : 1;
+      const scaleY = deltaMode === 1 ? lineHeight : deltaMode === 2 ? window.innerHeight : 1;
+      // The selection overlay receives the wheel event instead of this iframe.
+      // Instant scrolling preserves trackpad deltas even on smooth-scroll sites.
+      window.scrollBy({ left: deltaX * scaleX, top: deltaY * scaleY, behavior: "instant" });
+      emitScroll();
+      return;
+    }
+
+    if (event.data.type !== "INLINE_EDIT_CAPTURE_REQUEST") return;
+
+    handleCaptureRequest(event);
+  });
+})();
+
+
+</script></body>
+</html>
