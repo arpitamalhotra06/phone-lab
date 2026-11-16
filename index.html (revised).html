@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone Lab</title>
+<style>
+  :root {
+    --bg:#fbf9fd; --fg:#4d4659; --muted:#948ca6; --line:#ece4f2; --card:#ffffff; --gold:#c9a662;
+    --bio:#e39ab9; --phy:#8fb9e8; --chem:#6dbfa8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:#232029; --fg:#efeaf4; --muted:#a79fb5; --line:#3a3445; --card:#2c2836; --gold:#f0d295;
+      --bio:#f0aecf; --phy:#a9cdef; --chem:#7ed4bd;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:20px; background:var(--bg); color:var(--fg);
+         font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width:520px; margin-inline:auto; }
+  h1 { font-size:1.5rem; margin:8px 0 4px; }
+  h2 { font-size:1.2rem; margin:28px 0 10px; padding-bottom:6px; border-bottom:2px solid var(--line);
+       display:flex; align-items:center; gap:8px; }
+  h2 .dot { width:12px; height:12px; border-radius:50%; display:inline-block; }
+  p.lead { color:var(--muted); margin:0 0 8px; line-height:1.4; }
+  .card { display:block; padding:16px; margin-bottom:12px; border:1px solid var(--line); border-radius:14px;
+          background:var(--card); color:var(--fg); text-decoration:none; }
+  a.card:hover { border-color: var(--accent, #948ca6); }
+  a.card:focus-visible { outline:3px solid var(--gold); outline-offset:2px; }
+  .num { color:var(--muted); font-weight:700; margin-right:6px; }
+  .title { font-size:1.1rem; font-weight:600; }
+  .desc { color:var(--muted); margin:6px 0 0; line-height:1.4; }
+  .tag { font-size:.72rem; font-weight:600; letter-spacing:.04em; text-transform:uppercase;
+         padding:3px 8px; border-radius:99px; margin-left:8px; vertical-align:2px; }
+  small { color:var(--muted); display:block; margin-top:24px; line-height:1.4; }
+</style>
+</head>
+<body>
+  <h1>Phone Lab</h1>
+  <p class="lead">Pick a subject, then an experiment.</p>
+
+  <div id="list">
+    <h2>Biology <span class="dot" style="background:var(--bio)"></span></h2>
+    <a class="card" href="biology-lab.html"><div class="title"><span class="num">1</span>Specimen lab<span class="tag" style="background:var(--bio);color:#fff">Biology</span></div><p class="desc">For teacher-supervised labs. Pick an animal, study the organs, explore a photo of a specimen, and take a quiz.</p></a>
+    <a class="card" href="behavior-lab.html"><div class="title"><span class="num">2</span>Animal behaviour<span class="tag" style="background:var(--bio);color:#fff">Biology</span></div><p class="desc">Put pillbugs or fruit flies between two conditions, like moist and dry. The page times the trial, counts each side with tap counters, and tests whether the preference is statistically real.</p></a>
+
+    <h2>Physics <span class="dot" style="background:var(--phy)"></span></h2>
+    <a class="card" href="height.html"><div class="title"><span class="num">1</span>Drop height<span class="tag" style="background:var(--phy);color:#fff">Physics</span></div><p class="desc">Drop the phone onto carpet or a bed. The page times the fall and works out how far it dropped.</p></a>
+    <a class="card" href="pendulum.html"><div class="title"><span class="num">2</span>Pendulum period<span class="tag" style="background:var(--phy);color:#fff">Physics</span></div><p class="desc">Point the phone camera at a swinging pendulum. The page tracks the bob and measures the time of one full swing, T.</p></a>
+    <a class="card" href="tilt.html"><div class="title"><span class="num">3</span>Tilt angle<span class="tag" style="background:var(--phy);color:#fff">Physics</span></div><p class="desc">Rest the phone on a slope or a book. The page measures the angle from gravity, and you check it with a protractor.</p></a>
+    <a class="card" href="ramp.html"><div class="title"><span class="num">4</span>Ramp and friction<span class="tag" style="background:var(--phy);color:#fff">Physics</span></div><p class="desc">Let the phone slide down a slope. The page measures the acceleration and works out the friction.</p></a>
+
+    <h2>Chemistry <span class="dot" style="background:var(--chem)"></span></h2>
+    <a class="card" href="colorimeter.html"><div class="title"><span class="num">1</span>Colorimeter<span class="tag" style="background:var(--chem);color:#fff">Chemistry</span></div><p class="desc">Photograph coloured standards with the phone camera, build a Beer&ndash;Lambert calibration line from absorbance, and read off the concentration of an unknown sample.</p></a>
+    <a class="card" href="kinetics.html"><div class="title"><span class="num">2</span>Reaction kinetics<span class="tag" style="background:var(--chem);color:#fff">Chemistry</span></div><p class="desc">Watch a coloured reaction fade and record its colour over time. The page fits zero-, first- and second-order models, picks the best one, and gives the rate constant and half-life.</p></a>
+    <a class="card" href="calorimetry.html"><div class="title"><span class="num">3</span>Calorimetry<span class="tag" style="background:var(--chem);color:#fff">Chemistry</span></div><p class="desc">Track the temperature of a dissolving solid before and after mixing. The page extrapolates the change at the moment of mixing and works out the molar enthalpy change.</p></a>
+  </div>
+
+  <small>Open this page on your phone. Physics experiments need motion sensors and work best in Safari (iPhone) or Chrome (Android). The biology and chemistry labs use the camera and touchscreen — the chemistry labs also accept typed values, so they work without a camera. Chemistry experiments should use instructor-approved reactions only.</small>
+
+<script>
+  // To add an experiment, add a card to the right section above. Each card links straight to its page.
+</script>
+
+</body></html>
