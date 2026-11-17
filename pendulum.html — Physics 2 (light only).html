@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pendulum period — Phone Lab</title>
+<style>
+  :root {
+    --bg:#fbf9fd; --fg:#4d4659; --muted:#948ca6; --line:#ece4f2;
+    --accent:#8fb9e8; --accent-ink:#3d6f9e; --soft:#eaf2fa; --card:#ffffff; --gold:#c9a662;
+  }  * { box-sizing: border-box; }
+  body { margin:0; padding:20px; background:var(--bg); color:var(--fg);
+         font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width:520px; margin-inline:auto; }
+  a.back { color:var(--muted); text-decoration:none; font-size:.9rem; }
+  h1 { font-size:1.5rem; margin:10px 0 4px; }
+  h2 { font-size:1.15rem; margin:26px 0 10px; padding-bottom:6px; border-bottom:2px solid var(--accent); }
+  p.lead { color:var(--muted); margin:0 0 8px; line-height:1.45; }
+  .card { padding:14px; margin-bottom:12px; border:1px solid var(--line); border-radius:14px; background:var(--card); }
+  .note { font-size:.85rem; color:var(--muted); line-height:1.45; }
+  .btn { background:var(--accent-ink); color:#fff; border:none; border-radius:10px;
+         padding:10px 14px; font-size:.95rem; cursor:pointer; margin:4px 4px 4px 0; }
+  .btn.sec { background:var(--soft); color:var(--accent-ink); }
+  input, select { font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:10px;
+                  background:var(--bg); color:var(--fg); width:100%; max-width:110px; }
+  .preview { position:relative; width:100%; background:#fff; border:1px solid var(--line);
+             border-radius:12px; overflow:hidden; }
+  #preview { width:100%; display:block; }
+  .hint { text-align:center; font-size:.78rem; color:#777; padding:6px 0; background:#fff; }
+  .row { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  canvas { background:var(--card); border:1px solid var(--line); border-radius:12px; }
+  .result { background:var(--soft); border-radius:12px; padding:12px 14px; margin-top:10px; line-height:1.6; }
+  .result strong { color:var(--accent-ink); }
+  textarea { width:100%; height:90px; font-family:ui-monospace,monospace; font-size:.8rem;
+             border:1px solid var(--line); border-radius:10px; background:var(--bg); color:var(--fg); }
+  #msg { color:var(--gold); font-size:.85rem; min-height:1.2em; margin:6px 0; }
+  .status { font-size:.9rem; margin:8px 0; line-height:1.5; }
+  small { color:var(--muted); display:block; margin-top:24px; line-height:1.45; }
+  label.inline { display:flex; align-items:center; gap:8px; font-size:.9rem; }
+  label.inline input { width:90px; }
+</style>
+</head>
+<body>
+  <a class="back" href="index.html">&larr; Phone Lab</a>
+  <h1>Pendulum period</h1>
+  <p class="lead">Point the camera at a swinging pendulum. Tap the bob once &mdash; the page tracks it, measures the period T, and works out the length of the string.</p>
+
+  <div class="card">
+    <h2 style="margin-top:0">1 · Set it up</h2>
+    <p class="note">Hang something brightly coloured (an orange ball, a keyring toy) on a string from a doorway or shelf, in front of a plain wall. Prop the phone up so it stays still, with the bob swinging left&ndash;right across the view. Keep the swing small &mdash; under about 15&deg; either side &mdash; for the best result.</p>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">2 · Track the bob</h2>
+    <div class="row" style="margin-bottom:8px">
+      <button class="btn" id="startCam">Start camera</button>
+      <button class="btn" id="recBtn" disabled>Start recording</button>
+      <button class="btn sec" id="stopBtn" disabled>Stop & analyse</button>
+    </div>
+    <div class="preview">
+      <canvas id="preview" width="480" height="360"></canvas>
+      <div class="hint" id="capHint">Start the camera, then tap the bob to lock onto its colour</div>
+    </div>
+    <label class="inline" style="margin-top:10px">Colour match (wider if the bob keeps getting lost):
+      <input type="range" id="tol" min="30" max="130" value="65" style="flex:1;max-width:none;padding:0">
+    </label>
+    <div id="msg"></div>
+    <div class="status" id="status">Camera not started.</div>
+    <canvas id="strip" width="480" height="90" style="width:100%"></canvas>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">3 · Analyse</h2>
+    <div class="row" style="margin-bottom:10px">
+      <label class="inline">Local g (m&nbsp;s&#8315;&sup2;):
+        <input type="number" id="gIn" value="9.81" step="any" min="1">
+      </label>
+      <label class="inline">Measured string length (m, optional):
+        <input type="number" id="LIn" step="any" min="0" placeholder="0.95" style="width:105px">
+      </label>
+    </div>
+    <button class="btn" id="fitBtn">Analyse recording</button>
+    <div id="fitOut" class="result" style="display:none"></div>
+    <canvas id="plot" width="480" height="260" style="width:100%;margin-top:10px"></canvas>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">Try it without a pendulum</h2>
+    <div class="row">
+      <button class="btn sec" id="demoData">Load demo data</button>
+      <button class="btn sec" id="clearData">Clear everything</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">Export</h2>
+    <div class="row">
+      <button class="btn sec" id="csvBtn">Download CSV</button>
+      <button class="btn sec" id="csvShow">Show CSV</button>
+    </div>
+    <textarea id="csvBox" style="display:none;margin-top:8px" readonly></textarea>
+  </div>
+
+  <small>The page finds the period from upward crossings of the midpoint of the bob&rsquo;s motion, then uses T&sup2; = 4&pi;&sup2;L/g. The camera needs HTTPS (GitHub Pages is fine). No camera? The demo data shows the whole analysis. Large swings make T longer than the small-angle formula expects, so the page&rsquo;s length comes out a little too long &mdash; keep the swings small.</small>
+
+<script>
+(function () {
+  "use strict";
+  // ---------- state ----------
+  var stream = null, target = null;   // target = {r,g,b} colour of the bob
+  var recording = false, samples = []; // samples = [{t, x}]  x in 0..1 across frame
+  var camOn = false;
+  var rafId = null;
+  var lastSeen = 0;
+
+  var $ = function (id) { return document.getElementById(id); };
+  var msg = function (t) { $("msg").textContent = t || ""; };
+  var status = function (t) { $("status").textContent = t; };
+
+  var PV = $("preview"), pvCtx = PV.getContext("2d");
+  var small = document.createElement("canvas"); small.width = 240; small.height = 180;
+  var smCtx = small.getContext("2d", { willReadFrequently: true });
+  var strip = $("strip"), stCtx = strip.getContext("2d");
+
+  // ---------- camera ----------
+  $("startCam").addEventListener("click", function () {
+    if (camOn) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      msg("Camera not supported here.");
+      return;
+    }
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+      .then(function (s) {
+        stream = s;
+        var video = document.createElement("video");
+        video.setAttribute("playsinline", "");
+        video.muted = true;
+        video.srcObject = s;
+        return video.play().then(function () { return video; });
+      })
+      .then(function (video) {
+        camOn = true;
+        window.__labVideo = video;
+        $("capHint").textContent = "Tap the bob to lock onto its colour";
+        status("Camera on \u2014 tap the bob in the picture.");
+        $("recBtn").disabled = false;
+        msg("");
+        loop(video);
+      })
+      .catch(function (e) {
+        msg("Camera unavailable (" + e.name + "). Try the demo data below.");
+      });
+  });
+
+  function loop(video) {
+    var lastStrip = 0;
+    function frame() {
+      if (!camOn) return;
+      rafId = requestAnimationFrame(frame);
+      if (!video.videoWidth) return;
+      // draw display frame
+      PV.width = 480; PV.height = Math.round(480 * video.videoHeight / video.videoWidth) || 360;
+      pvCtx.drawImage(video, 0, 0, PV.width, PV.height);
+      // downscale for tracking
+      smCtx.drawImage(video, 0, 0, 240, 180);
+      var cx = null;
+      if (target) cx = track();
+      if (cx) {
+        // draw the marker
+        var sx = PV.width / 240, sy = PV.height / 180;
+        pvCtx.strokeStyle = "#3d6f9e"; pvCtx.lineWidth = 2.5;
+        pvCtx.beginPath(); pvCtx.arc(cx.x * sx, cx.y * sy, 14, 0, 7); pvCtx.stroke();
+        pvCtx.beginPath(); pvCtx.moveTo(cx.x * sx - 20, cx.y * sy); pvCtx.lineTo(cx.x * sx + 20, cx.y * sy); pvCtx.stroke();
+        pvCtx.beginPath(); pvCtx.moveTo(cx.x * sx, cx.y * sy - 20); pvCtx.lineTo(cx.x * sx, cx.y * sy + 20); pvCtx.stroke();
+        if (recording) {
+          samples.push({ t: performance.now() / 1000, x: cx.x / 240 });
+          lastSeen = performance.now() / 1000;
+        }
+      }
+      // live strip chart a few times a second
+      var now = performance.now();
+      if (now - lastStrip > 200) { lastStrip = now; drawStrip(); }
+    }
+    frame();
+  }
+
+  function track() {
+    var tol = +$("tol").value;
+    var d = smCtx.getImageData(0, 0, 240, 180).data;
+    var sx = 0, sy = 0, n = 0;
+    for (var i = 0, p = 0; i < d.length; i += 4, p++) {
+      var dr = d[i] - target.r, dg = d[i + 1] - target.g, db = d[i + 2] - target.b;
+      if (dr * dr + dg * dg + db * db < tol * tol) {
+        sx += p % 240; sy += Math.floor(p / 240); n++;
+      }
+    }
+    if (n < 15) return null;
+    if (n > 240 * 180 * 0.35) { status("Too much of the frame matches \u2014 face the bob at a plainer background."); return null; }
+    return { x: sx / n, y: sy / n, n: n };
+  }
+
+  // ---------- tap to pick the bob's colour ----------
+  PV.addEventListener("click", function (e) {
+    if (!camOn) { msg("Start the camera first."); return; }
+    var rect = PV.getBoundingClientRect();
+    var x = (e.clientX - rect.left) / rect.width * 240;
+    var y = (e.clientY - rect.top) / rect.height * 180;
+    var d = smCtx.getImageData(Math.max(0, x - 3), Math.max(0, y - 3), 7, 7).data;
+    var r = 0, g = 0, b = 0;
+    for (var i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
+    var n = d.length / 4;
+    target = { r: Math.round(r / n), g: Math.round(g / n), b: Math.round(b / n) };
+    status("Locked onto the colour R " + target.r + ", G " + target.g + ", B " + target.b +
+           ". " + (recording ? "Recording\u2026" : "Press start recording, then let it swing."));
+    msg("");
+  });
+
+  // ---------- recording ----------
+  $("recBtn").addEventListener("click", function () {
+    if (!target) { msg("Tap the bob first so the page knows what to follow."); return; }
+    recording = true;
+    samples = [];
+    $("recBtn").disabled = true;
+    $("stopBtn").disabled = false;
+    status("Recording \u2014 let it swing for 10\u201320 seconds.");
+  });
+  $("stopBtn").addEventListener("click", function () {
+    recording = false;
+    $("recBtn").disabled = false;
+    $("stopBtn").disabled = true;
+    status("Recording stopped (" + samples.length + " frames).");
+    analyse();
+  });
+
+  // ---------- strip chart ----------
+  function drawStrip() {
+    stCtx.clearRect(0, 0, strip.width, strip.height);
+    stCtx.fillStyle = "#ffffff"; stCtx.fillRect(0, 0, strip.width, strip.height);
+    if (samples.length < 2) return;
+    var t1 = samples[samples.length - 1].t;
+    var t0 = Math.max(samples[0].t, t1 - 12);
+    stCtx.strokeStyle = "#3d6f9e"; stCtx.lineWidth = 1.5;
+    stCtx.beginPath();
+    var started = false;
+    samples.forEach(function (s) {
+      if (s.t < t0) return;
+      var X = (s.t - t0) / (t1 - t0 || 1) * strip.width;
+      var Y = strip.height - s.x * strip.height;
+      if (!started) { stCtx.moveTo(X, Y); started = true; } else stCtx.lineTo(X, Y);
+    });
+    stCtx.stroke();
+  }
+
+  // ---------- analysis ----------
+  function analyse() {
+    var out = $("fitOut");
+    if (samples.length < 60) {
+      out.style.display = "block";
+      out.innerHTML = "Not enough data \u2014 record for at least 10 seconds with the bob in view.";
+      return;
+    }
+    // smooth the signal
+    var xs = samples.map(function (s) { return s.x; });
+    var sm = xs.map(function (_, i) {
+      var a = Math.max(0, i - 2), b = Math.min(xs.length, i + 3);
+      var sum = 0; for (var j = a; j < b; j++) sum += xs[j];
+      return sum / (b - a);
+    });
+    var mean = sm.reduce(function (a, b) { return a + b; }, 0) / sm.length;
+    // upward crossings of the mean
+    var cross = [];
+    for (var i = 1; i < sm.length; i++) {
+      if (sm[i - 1] <= mean && sm[i] > mean) {
+        // linear interpolation for the crossing time
+        var f = (mean - sm[i - 1]) / (sm[i] - sm[i - 1] || 1);
+        cross.push(samples[i - 1].t + f * (samples[i].t - samples[i - 1].t));
+      }
+    }
+    if (cross.length < 4) {
+      out.style.display = "block";
+      out.innerHTML = "Could not find at least four swings. Check the swing is left\u2013right across the frame, and record for longer.";
+      return;
+    }
+    var iv = [];
+    for (var k = 1; k < cross.length; k++) iv.push(cross[k] - cross[k - 1]);
+    var med = iv.slice().sort(function (a, b) { return a - b; })[Math.floor(iv.length / 2)];
+    var keep = iv.filter(function (v) { return Math.abs(v - med) / med < 0.25; });
+    var n = keep.length;
+    var T = keep.reduce(function (a, b) { return a + b; }, 0) / n;
+    var sd = Math.sqrt(keep.reduce(function (a, v) { return a + (v - T) * (v - T); }, 0) / Math.max(1, n - 1));
+    var g = Math.max(1, +$("gIn").value || 9.81);
+    var L = g * T * T / (4 * Math.PI * Math.PI);
+    var dur = samples[samples.length - 1].t - samples[0].t;
+
+    var html = "Period: <strong>T = " + T.toFixed(3) + " \u00b1 " + (sd / Math.sqrt(n)).toFixed(3) +
+      " s</strong> (from " + n + " swings over " + dur.toFixed(1) + " s)<br>" +
+      "Frequency: <strong>f = " + (1 / T).toFixed(3) + " Hz</strong><br>" +
+      "Length of the string: <strong>L = gT&sup2;/(4&pi;&sup2;) = " + L.toFixed(3) + " m</strong>";
+    var Lm = +$("LIn").value;
+    if (!isNaN(Lm) && Lm > 0) {
+      var gExp = 4 * Math.PI * Math.PI * Lm / (T * T);
+      var diff = Math.abs(gExp - g) / g * 100;
+      html += "<br>With your measured length " + Lm.toFixed(2) + " m: <strong>g = " + gExp.toFixed(2) +
+        " m&nbsp;s&#8315;&sup2;</strong> (" + diff.toFixed(1) + "% from " + g.toFixed(2) + ")";
+    }
+    html += "<br><em>Small swings only: at 20&deg; the true period is already 1% longer, which makes L come out about 1% too long.</em>";
+    out.innerHTML = html;
+    out.style.display = "block";
+    drawPlot(sm, cross);
+  }
+  $("fitBtn").addEventListener("click", function () {
+    if (!samples.length) { msg("Nothing recorded yet \u2014 or load the demo data."); return; }
+    analyse();
+  });
+
+  // ---------- plot ----------
+  function drawPlot(sm, cross) {
+    var cv = $("plot"), ctx = cv.getContext("2d");
+    var W = cv.width, H = cv.height, mL = 40, mR = 10, mT = 10, mB = 26;
+    ctx.clearRect(0, 0, W, H);
+    var t0 = samples[0].t, t1 = samples[samples.length - 1].t;
+    var xs = sm, xMin = Math.min.apply(null, xs), xMax = Math.max.apply(null, xs);
+    function X(t) { return mL + (t - t0) / (t1 - t0 || 1) * (W - mL - mR); }
+    function Y(v) { return H - mB - (v - xMin) / (xMax - xMin || 1) * (H - mT - mB); }
+    ctx.strokeStyle = "#cfc8da"; ctx.lineWidth = 1; ctx.font = "11px system-ui";
+    ctx.textAlign = "center";
+    var dur = t1 - t0;
+    for (var k = 0; k <= 4; k++) {
+      var t = t0 + dur * k / 4;
+      ctx.beginPath(); ctx.moveTo(X(t), mT); ctx.lineTo(X(t), H - mB); ctx.stroke();
+      ctx.fillText((t - t0).toFixed(0) + " s", X(t), H - mB + 14);
+    }
+    ctx.strokeStyle = "#3d6f9e"; ctx.lineWidth = 2;
+    ctx.beginPath();
+    samples.forEach(function (s, i) {
+      var px = X(s.t), py = Y(xs[i]);
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+    // mark crossings
+    ctx.fillStyle = "#c9a662";
+    cross.forEach(function (t) {
+      // find nearest sample index for y
+      var idx = 0, best = 1e9;
+      samples.forEach(function (s, i) {
+        var d2 = Math.abs(s.t - t); if (d2 < best) { best = d2; idx = i; }
+      });
+      ctx.beginPath(); ctx.arc(X(t), Y(xs[idx]), 4, 0, 7); ctx.fill();
+    });
+  }
+
+  // ---------- demo data ----------
+  $("demoData").addEventListener("click", function () {
+    recording = false;
+    $("recBtn").disabled = true;
+    samples = [];
+    var T0 = 2.0, t0 = performance.now() / 1000;
+    for (var t = 0; t <= 16; t += 1 / 30) {
+      var x = 0.5 + 0.17 * Math.sin(2 * Math.PI * t / T0) + (Math.random() - 0.5) * 0.012;
+      samples.push({ t: t0 + t, x: x });
+    }
+    status("Demo data loaded \u2014 a 2.0 s pendulum. Press analyse.");
+    analyse();
+  });
+
+  $("clearData").addEventListener("click", function () {
+    samples = []; target = null; recording = false;
+    $("recBtn").disabled = !camOn;
+    $("stopBtn").disabled = true;
+    $("fitOut").style.display = "none";
+    status(camOn ? "Camera on \u2014 tap the bob in the picture." : "Camera not started.");
+    stCtx.clearRect(0, 0, strip.width, strip.height);
+  });
+
+  // ---------- CSV ----------
+  function buildCSV() {
+    var lines = ["time_s,x_position"];
+    samples.forEach(function (s) { lines.push([(s.t - (samples[0] ? samples[0].t : 0)).toFixed(3), s.x.toFixed(4)].join(",")); });
+    return lines.join("\n");
+  }
+  $("csvBtn").addEventListener("click", function () {
+    try {
+      var blob = new Blob([buildCSV()], { type: "text/csv" });
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "pendulum.csv";
+      document.body.appendChild(a); a.click(); a.remove();
+    } catch (e) { $("csvShow").click(); }
+  });
+  $("csvShow").addEventListener("click", function () {
+    var box = $("csvBox");
+    box.style.display = "block";
+    box.value = buildCSV();
+    box.select();
+  });
+})();
+</script>
+</body>
+</html>
