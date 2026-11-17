@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Physics tools — Phone Lab</title>
+<style>
+  :root {
+    --bg:#fbf9fd; --fg:#4d4659; --muted:#948ca6; --line:#ece4f2;
+    --accent:#b3a7ec; --accent-ink:#6b64c9; --soft:#efedf9; --card:#ffffff; --gold:#c9a662;
+    --blue:#8fb9e8; --blue-ink:#3d6f9e;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:20px; background:var(--bg); color:var(--fg);
+         font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width:520px; margin-inline:auto; }
+  a.back { color:var(--muted); text-decoration:none; font-size:.9rem; }
+  h1 { font-size:1.5rem; margin:10px 0 4px; }
+  h2 { font-size:1.15rem; margin:0 0 10px; padding-bottom:6px; border-bottom:2px solid var(--accent); }
+  p.lead { color:var(--muted); margin:0 0 8px; line-height:1.45; }
+  .card { padding:14px; margin-bottom:12px; border:1px solid var(--line); border-radius:14px; background:var(--card); }
+  .note { font-size:.85rem; color:var(--muted); line-height:1.45; }
+  .btn { background:var(--accent-ink); color:#fff; border:none; border-radius:10px;
+         padding:10px 14px; font-size:.95rem; cursor:pointer; margin:4px 4px 4px 0; }
+  .btn.sec { background:var(--soft); color:var(--accent-ink); }
+  .btn.blue { background:var(--blue-ink); }
+  .btn:disabled { background:var(--soft); color:var(--muted); cursor:default; }
+  input { font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:10px;
+          background:var(--bg); color:var(--fg); width:110px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  label.inline { display:flex; align-items:center; gap:8px; font-size:.9rem; flex-wrap:wrap; }
+  .chips { display:flex; gap:8px; flex-wrap:wrap; margin:10px 0 16px; }
+  .chips a { font-size:.85rem; font-weight:600; text-decoration:none; color:var(--accent-ink);
+             background:var(--soft); border-radius:99px; padding:7px 14px; }
+  .big { font-size:2.2rem; font-weight:700; color:var(--accent-ink); font-variant-numeric:tabular-nums; line-height:1.2; }
+  .big.blue { color:var(--blue-ink); }
+  .status { font-size:.9rem; margin:8px 0; line-height:1.5; }
+  .msg { color:var(--gold); font-size:.85rem; min-height:1.2em; margin:6px 0; }
+  canvas { width:100%; background:#fff; border:1px solid var(--line); border-radius:12px; }
+  .preview { position:relative; }
+  .hint { text-align:center; font-size:.78rem; color:#777; padding:6px 0; background:#fff; }
+  table { width:100%; border-collapse:collapse; font-size:.9rem; margin:8px 0; }
+  th, td { padding:6px 4px; border-bottom:1px solid var(--line); text-align:left; }
+  th { color:var(--muted); font-weight:600; }
+  .tapbtn { width:100%; padding:26px 0; font-size:1.15rem; border-radius:14px; }
+  small { color:var(--muted); display:block; margin-top:24px; line-height:1.45; }
+</style>
+</head>
+<body>
+  <a class="back" href="index.html">&larr; Phone Lab</a>
+  <h1>Physics tools</h1>
+  <p class="lead">Small utilities for the lab &mdash; not experiments, just quick measurements.</p>
+  <div class="chips">
+    <a href="#tilt">Tilt angle</a>
+    <a href="#ruler">Ruler</a>
+    <a href="#swing">Swing timer</a>
+    <a href="#tone">Tone</a>
+    <a href="#pitch">Pitch</a>
+  </div>
+
+  <!-- TILT -->
+  <div class="card" id="tilt">
+    <h2>Tilt angle</h2>
+    <p class="note">Rest the phone flat on a slope or surface. The page shows how far it is tipped from level.</p>
+    <button class="btn" id="tiltBtn">Enable motion sensor</button>
+    <div class="big" id="tiltOut" style="margin-top:8px">&mdash;</div>
+    <div class="status" id="tiltStatus">Sensor not enabled.</div>
+    <p class="note">Front&ndash;back: <span id="tiltFB">&mdash;</span> &middot; Left&ndash;right: <span id="tiltLR">&mdash;</span></p>
+  </div>
+
+  <!-- RULER -->
+  <div class="card" id="ruler">
+    <h2>Ruler</h2>
+    <p class="note">Point the camera at something with a known size (a credit card is 8.56&nbsp;cm wide, a coin, a metre stick). Tap its two ends, type the real length to set the scale, then tap any two points to measure the distance between them.</p>
+    <div class="row" style="margin-bottom:8px">
+      <button class="btn blue" id="rCamBtn">Start camera</button>
+      <label class="btn sec" style="margin:4px 4px 4px 0">Use a photo
+        <input type="file" id="rPhotoFile" accept="image/*" style="display:none">
+      </label>
+      <button class="btn sec" id="rDemoBtn">Try a demo image</button>
+    </div>
+    <div class="preview">
+      <canvas id="rCanvas" width="480" height="360"></canvas>
+      <div class="hint" id="rHint">Start the camera or load a photo</div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button class="btn" id="rRefBtn">New reference</button>
+      <button class="btn" id="rMeasBtn">New measurement</button>
+      <button class="btn sec" id="rClearBtn">Clear marks</button>
+    </div>
+    <div class="row" style="margin-top:8px" id="rRefRow" hidden>
+      <span class="note">That reference is:</span>
+      <input type="number" id="rRefLen" step="any" min="0.1" placeholder="length" style="width:110px">
+      <span class="note">cm long</span>
+      <button class="btn" id="rRefSet">Set</button>
+    </div>
+    <div class="status" id="rStatus">Scale not set yet.</div>
+  </div>
+
+  <!-- SWING TIMER -->
+  <div class="card" id="swing">
+    <h2>Swing timer</h2>
+    <p class="note">For any repeated motion: tap the button each time the object passes the same point going the same way (for a pendulum, once per full swing). The page averages the intervals and gives the period.</p>
+    <button class="btn tapbtn blue" id="tapBtn">TAP ON EACH PASS</button>
+    <div class="big blue" id="swingOut" style="margin-top:10px">&mdash;</div>
+    <table id="swingTable"><thead><tr><th>Tap</th><th>Interval (s)</th></tr></thead><tbody></tbody></table>
+    <button class="btn sec" id="swingClear">Reset timer</button>
+  </div>
+
+  <!-- TONE -->
+  <div class="card" id="tone">
+    <h2>Tone generator</h2>
+    <p class="note">A pure sine tone for resonance tubes, sonometers and the Doppler experiment. Keep it between 300 and 5000&nbsp;Hz for the best microphone response.</p>
+    <div class="row">
+      <label class="inline">Frequency (Hz):
+        <input type="number" id="tFreq" value="440" step="1" min="20" max="20000">
+      </label>
+      <label class="inline" style="margin-left:4px">Volume:
+        <input type="range" id="tVol" min="0" max="100" value="40" style="width:130px;padding:0">
+      </label>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button class="btn" id="tPlayBtn">Play tone</button>
+      <button class="btn sec" id="tNoteBtn">A4 440 Hz</button>
+    </div>
+    <div class="msg" id="tMsg"></div>
+  </div>
+
+  <!-- PITCH -->
+  <div class="card" id="pitch">
+    <h2>Pitch meter</h2>
+    <p class="note">Listen to any steady sound &mdash; a tuning fork, a plucked string, your tone generator &mdash; and the page shows the dominant frequency and the nearest musical note.</p>
+    <button class="btn" id="pListenBtn">Start listening</button>
+    <div class="big" id="pOut" style="margin-top:8px">&mdash;</div>
+    <div class="status" id="pStatus">Not listening.</div>
+  </div>
+
+  <small>Sensors and the microphone need HTTPS (GitHub Pages is fine). On an iPhone you must tap the enable button and allow motion or microphone access. The ruler&rsquo;s accuracy depends on holding the camera the same distance from the object for the reference and the measurement &mdash; measure both in the same photo when you can.</small>
+
+<script>
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+
+  // ================= TILT =================
+  var tiltOn = false;
+  $("tiltBtn").addEventListener("click", function () {
+    function go() {
+      window.addEventListener("deviceorientation", function (e) {
+        if (e.beta === null) return;
+        tiltOn = true;
+        var fb = Math.abs(e.beta) > 0.01 ? e.beta : 0;
+        var lr = Math.abs(e.gamma) > 0.01 ? e.gamma : 0;
+        var flat = Math.atan(Math.sqrt(Math.pow(Math.tan(fb * Math.PI / 180), 2) +
+                                        Math.pow(Math.tan(lr * Math.PI / 180), 2))) * 180 / Math.PI;
+        $("tiltOut").textContent = flat.toFixed(1) + "\u00b0 from level";
+        $("tiltFB").textContent = fb.toFixed(1) + "\u00b0";
+        $("tiltLR").textContent = lr.toFixed(1) + "\u00b0";
+        $("tiltStatus").textContent = "Reading live.";
+      });
+      $("tiltStatus").textContent = "Waiting for sensor data\u2026";
+      setTimeout(function () {
+        if (!tiltOn) $("tiltStatus").textContent = "No motion data received \u2014 this needs a phone (HTTPS, Safari or Chrome).";
+      }, 1500);
+    }
+    if (typeof DeviceOrientationEvent === "undefined") { $("tiltStatus").textContent = "No orientation sensor on this device."; return; }
+    if (typeof DeviceOrientationEvent.requestPermission === "function") {
+      DeviceOrientationEvent.requestPermission().then(function (s) {
+        if (s === "granted") go(); else $("tiltStatus").textContent = "Permission denied \u2014 allow motion access in Safari settings.";
+      }).catch(function () { $("tiltStatus").textContent = "Could not ask for motion permission."; });
+    } else go();
+  });
+
+  // ================= RULER =================
+  var rVideo = null, rImg = null;      // source: <video> or <img>
+  var rMarks = [];                     // saved segments {type:'ref'|'meas', p1, p2, cm}
+  var rPending = null;                 // {type, pts:[]}
+  var rScale = null;                   // cm per pixel
+  var rCtx = $("rCanvas").getContext("2d");
+
+  function rRedraw() {
+    var cv = $("rCanvas");
+    rCtx.fillStyle = "#fff";
+    rCtx.fillRect(0, 0, cv.width, cv.height);
+    var src = rVideo || rImg;
+    if (src) {
+      var W = src.videoWidth || (rImg && rImg.naturalWidth);
+      var H = src.videoHeight || (rImg && rImg.naturalHeight);
+      if (W && H) { cv.width = 480; cv.height = Math.round(480 * H / W); rCtx.drawImage(src, 0, 0, cv.width, cv.height); }
+    }
+    rMarks.forEach(function (m) {
+      drawSeg(m.p1, m.p2, m.type === "ref" ? "#c9a662" : "#3d6f9e",
+        m.cm ? m.cm.toFixed(2) + " cm" : "");
+    });
+    if (rPending && rPending.pts.length === 1) {
+      drawSeg(rPending.pts[0], rPending.pts[0], "#6b64c9", "");
+    }
+  }
+  function drawSeg(a, b, colour, label) {
+    var c = rCtx;
+    c.strokeStyle = colour; c.lineWidth = 2.5;
+    c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke();
+    [a, b].forEach(function (p) {
+      c.fillStyle = colour;
+      c.beginPath(); c.arc(p.x, p.y, 4.5, 0, 7); c.fill();
+    });
+    if (label) {
+      c.font = "600 13px system-ui";
+      var tx = (a.x + b.x) / 2, ty = (a.y + b.y) / 2 - 10;
+      c.fillStyle = "#fff";
+      var w = c.measureText(label).width;
+      c.fillRect(tx - w / 2 - 4, ty - 13, w + 8, 18);
+      c.fillStyle = colour;
+      c.textAlign = "center";
+      c.fillText(label, tx, ty);
+    }
+  }
+  function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+  $("rCamBtn").addEventListener("click", function () {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      $("rStatus").textContent = "Camera not supported here \u2014 use a photo or the demo image.";
+      return;
+    }
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+      .then(function (s) {
+        if (!rVideo) {
+          rVideo = document.createElement("video");
+          rVideo.setAttribute("playsinline", ""); rVideo.muted = true;
+        }
+        rVideo.srcObject = s;
+        return rVideo.play();
+      })
+      .then(function () {
+        rImg = null;
+        $("rHint").textContent = "Tap the two ends of a known object to set the scale";
+        rLoop();
+      })
+      .catch(function (e) {
+        $("rStatus").textContent = "Camera unavailable (" + e.name + "). Use a photo or the demo image.";
+      });
+  });
+  var rLoopId = null;
+  function rLoop() {
+    if (rLoopId) cancelAnimationFrame(rLoopId);
+    function step() {
+      if (rVideo && rVideo.srcObject) { rRedraw(); rLoopId = requestAnimationFrame(step); }
+    }
+    step();
+  }
+  $("rPhotoFile").addEventListener("change", function (e) {
+    var f = e.target.files && e.target.files[0];
+    if (!f) return;
+    var rd = new FileReader();
+    rd.onload = function () {
+      if (!rImg) rImg = new Image();
+      rImg.onload = function () {
+        if (rVideo) { try { rVideo.srcObject.getTracks().forEach(function (t) { t.stop(); }); } catch (x) {} rVideo = null; }
+        $("rHint").textContent = "Tap the two ends of a known object to set the scale";
+        rRedraw();
+      };
+      rImg.src = rd.result;
+    };
+    rd.readAsDataURL(f);
+  });
+  $("rDemoBtn").addEventListener("click", function () {
+    // synthetic scene: a card (8.56 cm) and a pencil three times as long
+    var c = document.createElement("canvas");
+    c.width = 480; c.height = 360;
+    var x = c.getContext("2d");
+    x.fillStyle = "#f4f1ea"; x.fillRect(0, 0, 480, 360);
+    x.fillStyle = "#d9c9a3"; x.fillRect(60, 70, 140, 90);               // card: 140 px = 8.56 cm
+    x.strokeStyle = "#a98a4f"; x.strokeRect(60, 70, 140, 90);
+    x.fillStyle = "#6b5b33"; x.font = "600 13px system-ui"; x.textAlign = "center";
+    x.fillText("card \u2014 8.56 cm", 130, 150);
+    x.strokeStyle = "#8a7f6d"; x.lineWidth = 7; x.lineCap = "round";   // pencil: 420 px = 25.68 cm
+    x.beginPath(); x.moveTo(30, 300); x.lineTo(450, 300); x.stroke();
+    x.fillStyle = "#8a7f6d"; x.font = "600 13px system-ui";
+    x.fillText("pencil \u2014 how long?", 240, 340);
+    if (!rImg) rImg = new Image();
+    if (rVideo) { try { rVideo.srcObject.getTracks().forEach(function (t) { t.stop(); }); } catch (x2) {} rVideo = null; }
+    rImg.onload = function () { rRedraw(); };
+    rImg.src = c.toDataURL();
+    $("rHint").textContent = "Demo: tap the card's left and right edges, set 8.56 cm, then tap the pencil's ends";
+    $("rStatus").textContent = "Scale not set yet.";
+  });
+
+  $("rCanvas").addEventListener("click", function (e) {
+    if (!rVideo && !rImg) { $("rStatus").textContent = "Start the camera, load a photo or try the demo image first."; return; }
+    var rect = this.getBoundingClientRect();
+    var p = { x: (e.clientX - rect.left) / rect.width * this.width,
+              y: (e.clientY - rect.top) / rect.height * this.height };
+    if (!rPending) { $("rStatus").textContent = "Press \u201cNew reference\u201d or \u201cNew measurement\u201d first."; return; }
+    rPending.pts.push(p);
+    if (rPending.pts.length === 1) { rRedraw(); return; }
+    var seg = { type: rPending.type, p1: rPending.pts[0], p2: rPending.pts[1], cm: null };
+    rPending = null;
+    var d = dist(seg.p1, seg.p2);
+    if (seg.type === "ref") {
+      rMarks.push(seg); rRedraw();
+      $("rRefRow").hidden = false;
+      $("rStatus").textContent = "Reference marked: " + d.toFixed(0) + " pixels. Type its real length and press Set.";
+    } else {
+      if (!rScale) { $("rStatus").textContent = "Set the scale first with a known object."; return; }
+      seg.cm = d * rScale;
+      rMarks.push(seg); rRedraw();
+      $("rStatus").innerHTML = "Distance: <strong>" + seg.cm.toFixed(2) + " cm</strong> (" + (seg.cm / 2.54).toFixed(2) + " in) \u2014 " + d.toFixed(0) + " px at " + rScale.toFixed(4) + " cm/px.";
+    }
+  });
+  $("rRefBtn").addEventListener("click", function () {
+    rPending = { type: "ref", pts: [] };
+    $("rHint").textContent = "Tap one end of the known object, then the other";
+  });
+  $("rMeasBtn").addEventListener("click", function () {
+    if (!rScale) { $("rStatus").textContent = "Set the scale first with a known object."; return; }
+    rPending = { type: "meas", pts: [] };
+    $("rHint").textContent = "Tap the first point, then the second";
+  });
+  $("rRefSet").addEventListener("click", function () {
+    var v = +$("rRefLen").value;
+    var refs = rMarks.filter(function (m) { return m.type === "ref" && !m.cm; });
+    if (isNaN(v) || v <= 0 || !refs.length) { $("rStatus").textContent = "Type a length in centimetres first."; return; }
+    var seg = refs[refs.length - 1];
+    seg.cm = v;
+    rScale = v / dist(seg.p1, seg.p2);
+    rRedraw();
+    $("rRefRow").hidden = true;
+    $("rStatus").innerHTML = "Scale set: <strong>" + rScale.toFixed(4) + " cm per pixel</strong>. Press \u201cNew measurement\u201d and tap any two points.";
+  });
+  $("rClearBtn").addEventListener("click", function () {
+    rMarks = []; rPending = null; rScale = null;
+    $("rRefRow").hidden = true;
+    $("rStatus").textContent = "Cleared \u2014 marks and the scale.";
+    rRedraw();
+  });
+
+  // ================= SWING TIMER =================
+  var taps = [];
+  var swingBody = $("swingTable").querySelector("tbody");
+  $("tapBtn").addEventListener("click", function () {
+    var t = performance.now() / 1000;
+    taps.push(t);
+    var tr = document.createElement("tr");
+    tr.innerHTML = "<td>" + taps.length + "</td><td>" +
+      (taps.length > 1 ? (taps[taps.length - 1] - taps[taps.length - 2]).toFixed(3) : "\u2014") + "</td>";
+    swingBody.appendChild(tr);
+    if (taps.length >= 3) {
+      var iv = [];
+      for (var i = 1; i < taps.length; i++) iv.push(taps[i] - taps[i - 1]);
+      var med = iv.slice().sort(function (a, b) { return a - b; })[Math.floor(iv.length / 2)];
+      var keep = iv.filter(function (v) { return Math.abs(v - med) / med < 0.35; });
+      var n = keep.length, T = keep.reduce(function (a, b) { return a + b; }, 0) / n;
+      $("swingOut").textContent = "T = " + T.toFixed(3) + " s \u00b7 f = " + (1 / T).toFixed(3) + " Hz (" + n + " swings)";
+    } else {
+      $("swingOut").textContent = "Keep tapping \u2014 need at least 3";
+    }
+  });
+  $("swingClear").addEventListener("click", function () {
+    taps = []; swingBody.innerHTML = "";
+    $("swingOut").textContent = "\u2014";
+  });
+
+  // ================= TONE =================
+  var audioCtx = null, osc = null, oscGain = null;
+  function ensureCtx() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    return audioCtx;
+  }
+  $("tPlayBtn").addEventListener("click", function () {
+    if (osc) {
+      try { osc.stop(); } catch (e) {}
+      osc = null; oscGain = null;
+      $("tPlayBtn").textContent = "Play tone";
+      $("tMsg").textContent = "";
+      return;
+    }
+    try {
+      ensureCtx();
+      var f = Math.min(20000, Math.max(20, +$("tFreq").value || 440));
+      osc = audioCtx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = f;
+      oscGain = audioCtx.createGain();
+      oscGain.gain.value = (+$("tVol").value || 40) / 100 * 0.5;
+      osc.connect(oscGain).connect(audioCtx.destination);
+      osc.start();
+      $("tPlayBtn").textContent = "Stop tone";
+      $("tMsg").textContent = "Playing " + f + " Hz.";
+    } catch (e) {
+      $("tMsg").textContent = "Could not play a tone here (" + e.name + ").";
+    }
+  });
+  $("tVol").addEventListener("input", function () {
+    if (oscGain) oscGain.gain.value = (+this.value || 40) / 100 * 0.5;
+  });
+  $("tFreq").addEventListener("change", function () {
+    var f = Math.min(20000, Math.max(20, +this.value || 440));
+    if (osc) osc.frequency.value = f;
+  });
+  $("tNoteBtn").addEventListener("click", function () {
+    $("tFreq").value = 440;
+    if (osc) osc.frequency.value = 440;
+    $("tMsg").textContent = "Set to A4 (440 Hz).";
+  });
+
+  // ================= PITCH =================
+  var pListening = false, pAnalyser = null, pBuf = null;
+  $("pListenBtn").addEventListener("click", async function () {
+    if (pListening) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      $("pStatus").textContent = "Microphone not supported here.";
+      return;
+    }
+    try {
+      var s = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+      });
+      ensureCtx();
+      var src = audioCtx.createMediaStreamSource(s);
+      pAnalyser = audioCtx.createAnalyser();
+      try { pAnalyser.fftSize = 16384; } catch (e) { pAnalyser.fftSize = 8192; }
+      pAnalyser.smoothingTimeConstant = 0;
+      pBuf = new Float32Array(pAnalyser.frequencyBinCount);
+      src.connect(pAnalyser);
+      pListening = true;
+      $("pStatus").textContent = "Listening \u2014 hold a steady sound to the microphone.";
+      setInterval(pPoll, 150);
+    } catch (e) {
+      $("pStatus").textContent = "Microphone unavailable (" + e.name + "). Check HTTPS and permissions.";
+    }
+  });
+  var NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+  function pPoll() {
+    if (!pAnalyser) return;
+    pAnalyser.getFloatFrequencyData(pBuf);
+    var sr = audioCtx.sampleRate, binHz = sr / pAnalyser.fftSize;
+    var lo = Math.max(1, Math.floor(50 / binHz));
+    var hi = Math.min(pBuf.length - 2, Math.ceil(5000 / binHz));
+    var best = -1, bestV = -Infinity;
+    for (var i = lo; i <= hi; i++) {
+      if (pBuf[i] > bestV) { bestV = pBuf[i]; best = i; }
+    }
+    if (best < 0 || bestV < -75) { $("pOut").textContent = "\u2014"; return; }
+    var a = pBuf[best - 1], b = pBuf[best], c = pBuf[best + 1];
+    var d = 0.5 * (a - c) / (a - 2 * b + c || 1);
+    var f = (best + d) * binHz;
+    var midi = Math.round(69 + 12 * Math.log2(f / 440));
+    var note = NOTES[((midi % 12) + 12) % 12] + (Math.floor(midi / 12) - 1);
+    $("pOut").textContent = f.toFixed(1) + " Hz";
+    $("pStatus").textContent = "Nearest note: " + note + " (" + (f - 440 * Math.pow(2, (midi - 69) / 12)).toFixed(1) + " Hz away).";
+  }
+})();
+</script>
+</body>
+</html>
