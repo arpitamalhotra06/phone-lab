@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Speed of sound — Phone Lab</title>
+<style>
+  :root {
+    --bg:#fbf9fd; --fg:#4d4659; --muted:#948ca6; --line:#ece4f2;
+    --accent:#8fb9e8; --accent-ink:#3d6f9e; --soft:#eaf2fa; --card:#ffffff; --gold:#c9a662;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:20px; background:var(--bg); color:var(--fg);
+         font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width:520px; margin-inline:auto; }
+  a.back { color:var(--muted); text-decoration:none; font-size:.9rem; }
+  h1 { font-size:1.5rem; margin:10px 0 4px; }
+  h2 { font-size:1.15rem; margin:26px 0 10px; padding-bottom:6px; border-bottom:2px solid var(--accent); }
+  p.lead { color:var(--muted); margin:0 0 8px; line-height:1.45; }
+  .card { padding:14px; margin-bottom:12px; border:1px solid var(--line); border-radius:14px; background:var(--card); }
+  .note { font-size:.85rem; color:var(--muted); line-height:1.45; }
+  .btn { background:var(--accent-ink); color:#fff; border:none; border-radius:10px;
+         padding:10px 14px; font-size:.95rem; cursor:pointer; margin:4px 4px 4px 0; }
+  .btn.sec { background:var(--soft); color:var(--accent-ink); }
+  .btn:disabled { opacity:.45; cursor:default; }
+  input, select { font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:10px;
+                  background:var(--bg); color:var(--fg); width:100%; max-width:110px; }
+  .row { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  canvas { background:var(--card); border:1px solid var(--line); border-radius:12px; width:100%; }
+  .result { background:var(--soft); border-radius:12px; padding:12px 14px; margin-top:10px; line-height:1.6; display:none; }
+  .result strong { color:var(--accent-ink); }
+  #meterWrap { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px; margin-top:10px; }
+  #meterBar { height:26px; border-radius:8px; background:var(--soft); overflow:hidden; position:relative; }
+  #meterFill { height:100%; width:0%; background:var(--accent); border-radius:8px; transition:width .12s; }
+  #meterVal { text-align:center; font-size:.82rem; color:var(--muted); margin-top:6px; font-variant-numeric:tabular-nums; }
+  table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; margin-top:8px; }
+  th, td { padding:7px 6px; border-bottom:1px solid var(--line); text-align:right; font-size:.92rem; }
+  th:first-child, td:first-child { text-align:left; }
+  th { color:var(--muted); font-weight:600; }
+  small { color:var(--muted); display:block; margin-top:24px; line-height:1.45; }
+  label.inline { display:flex; align-items:center; gap:8px; font-size:.9rem; }
+  label.inline input { width:90px; }
+</style>
+</head>
+<body>
+  <a class="back" href="index.html">&larr; Phone Lab</a>
+  <h1>Speed of sound</h1>
+  <p class="lead">Play a steady tone out loud and slide the phone towards a wall. The direct sound and the echo interfere, so the loudness rises and falls &mdash; and the distance between loud points reveals the speed of sound.</p>
+
+  <div class="card">
+    <h2 style="margin-top:0">1 &middot; Set it up</h2>
+    <p class="note">Find a bare wall and grab a ruler or tape measure. Face the phone&rsquo;s speaker towards the wall, holding it flat and level, parallel to the wall. The mic and speaker stay on the same phone &mdash; you only need one phone. Keep the volume at about half.</p>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">2 &middot; Play the tone</h2>
+    <label class="inline">Tone frequency (Hz):
+      <input type="number" id="freq" value="1000" min="500" max="4000" step="10" inputmode="numeric">
+    </label>
+    <div class="row" style="margin-top:8px">
+      <button class="btn" id="playBtn">Play tone</button>
+      <button class="btn sec" id="stopBtn" disabled>Stop</button>
+    </div>
+    <div id="meterWrap">
+      <div id="meterBar"><div id="meterFill"></div></div>
+      <div id="meterVal">Waiting for the microphone&hellip;</div>
+    </div>
+    <div class="note" id="micNote" style="margin-top:8px"></div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">3 &middot; Take readings</h2>
+    <p class="note">Start with the phone about 5&nbsp;cm from the wall. Type the distance, tap <em>Take reading</em>, then slide the phone 3&nbsp;cm further and repeat. Keep going out to about 50&ndash;60&nbsp;cm &mdash; aim for at least 12 readings. Hold the phone still for a moment at each distance.</p>
+    <div class="row">
+      <label class="inline">Distance from wall (cm):
+        <input type="number" id="dist" value="5" min="0" max="200" step="0.5" inputmode="decimal">
+      </label>
+      <button class="btn" id="takeBtn" disabled>Take reading</button>
+    </div>
+    <table>
+      <thead><tr><th>#</th><th>Distance (cm)</th><th>Amplitude</th></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    <div class="row" style="margin-top:10px">
+      <button class="btn sec" id="demoBtn">Load demo data</button>
+      <button class="btn sec" id="clearBtn">Clear</button>
+      <button class="btn sec" id="csvBtn">Download CSV</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">4 &middot; Fit the wave</h2>
+    <p class="note">The amplitude should swing up and down as you moved &mdash; one full cycle of loud&ndash;quiet&ndash;loud every half wavelength. The page fits the best sine wave to your readings and works out the wavelength, then the speed of sound from v&nbsp;=&nbsp;f&lambda;.</p>
+    <button class="btn" id="fitBtn">Fit the curve</button>
+    <div id="fitOut" class="result"></div>
+    <canvas id="plot" width="480" height="300" style="margin-top:10px"></canvas>
+  </div>
+
+  <small>
+    The speaker plays a steady tone while the microphone listens. The direct sound and the sound reflected from the wall arrive slightly out of step, and their phase difference changes as you move &mdash; so the recorded loudness follows a sine wave in distance. Adjacent maxima are half a wavelength apart, and v = f&lambda;.
+    The fit searches speeds from 300 to 400 m/s and finds the one whose sine wave matches your readings best (least squares). Test it on the demo data first: it recovers about 343 m/s.
+    Needs the microphone and speaker at once, so use headphones-free speakers, not a headset. Works best in a quiet room with a hard wall.
+  </small>
+
+<script>
+  var $ = function (id) { return document.getElementById(id); };
+  var readings = [];   // {d: cm, a: amplitude}
+  var audioCtx = null, osc = null, gainNode = null, analyser = null, micStream = null;
+  var playing = false;
+  var ema = 0;         // smoothed RMS
+  var rafId = null;
+  var buf = null;
+
+  // ---------- tone ----------
+  function play() {
+    var f = parseFloat($('freq').value);
+    if (!isFinite(f) || f < 500 || f > 4000) { note('Frequency must be between 500 and 4000 Hz.'); return; }
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    osc = audioCtx.createOscillator();
+    gainNode = audioCtx.createGain();
+    gainNode.gain.value = 0.5;
+    osc.type = 'sine';
+    osc.frequency.value = f;
+    osc.connect(gainNode); gainNode.connect(audioCtx.destination);
+    osc.start();
+    playing = true;
+    $('playBtn').disabled = true; $('stopBtn').disabled = false;
+    note('Tone playing at ' + f + ' Hz. Allow microphone access when asked.');
+    startMic();
+  }
+  function stop() {
+    if (osc) { try { osc.stop(); } catch (e) {} osc = null; }
+    playing = false;
+    $('playBtn').disabled = false; $('stopBtn').disabled = true;
+    $('takeBtn').disabled = true;
+    $('meterVal').textContent = 'Stopped.';
+  }
+
+  // ---------- microphone ----------
+  function startMic() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { note('This browser cannot use the microphone.'); return; }
+    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } })
+      .then(function (stream) {
+        micStream = stream;
+        var src = audioCtx.createMediaStreamSource(stream);
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 2048;
+        src.connect(analyser);
+        buf = new Float32Array(analyser.fftSize);
+        $('takeBtn').disabled = !playing;
+        note('Listening. Watch the bar rise and fall as you slide the phone.');
+        loop();
+      })
+      .catch(function () { note('Microphone blocked. Allow mic access in your browser settings, then press Play again.'); });
+  }
+  function loop() {
+    rafId = requestAnimationFrame(loop);
+    if (!analyser) return;
+    analyser.getFloatTimeDomainData(buf);
+    var s = 0;
+    for (var i = 0; i < buf.length; i++) s += buf[i] * buf[i];
+    var rms = Math.sqrt(s / buf.length);
+    ema = 0.75 * ema + 0.25 * rms;
+    var pct = Math.min(100, Math.round(ema * 700));
+    $('meterFill').style.width = pct + '%';
+    $('meterVal').textContent = 'Loudness: ' + ema.toFixed(4);
+  }
+  function note(msg) { $('micNote').textContent = msg; }
+
+  // ---------- readings ----------
+  function takeReading() {
+    if (!playing || !analyser) return;
+    var d = parseFloat($('dist').value);
+    if (!isFinite(d) || d < 0) { note('Type a distance first.'); return; }
+    // average RMS over ~0.4 s
+    var frames = 0, acc = 0;
+    var t0 = performance.now();
+    var iv = setInterval(function () {
+      analyser.getFloatTimeDomainData(buf);
+      var s = 0;
+      for (var i = 0; i < buf.length; i++) s += buf[i] * buf[i];
+      acc += Math.sqrt(s / buf.length); frames++;
+      if (performance.now() - t0 > 400) {
+        clearInterval(iv);
+        var a = acc / frames;
+        readings.push({ d: d, a: a });
+        $('dist').value = (d + 3).toFixed(1).replace(/\.0$/,'');
+        renderTable();
+        note('Reading ' + readings.length + ' taken. Move the phone and take the next one.');
+      }
+    }, 40);
+  }
+  function renderTable() {
+    var tb = $('tbody'); tb.innerHTML = '';
+    readings.forEach(function (r, i) {
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td>' + (i + 1) + '</td><td>' + r.d + '</td><td>' + r.a.toFixed(4) + '</td>';
+      tb.appendChild(tr);
+    });
+  }
+
+  // ---------- fit ----------
+  // Model: A(d) = a + b*cos(k*d + phi), k = 4*pi*f/(100*v)  (d in cm, v in m/s)
+  function fit() {
+    if (readings.length < 8) { $('fitOut').style.display = 'block'; $('fitOut').innerHTML = 'Need at least 8 readings &mdash; take more (or load the demo data).'; return; }
+    var f = parseFloat($('freq').value) || 1000;
+    var n = readings.length;
+    var d = readings.map(function (r) { return r.d; });
+    var A = readings.map(function (r) { return r.a; });
+    var Amean = A.reduce(function (s, v) { return s + v; }, 0) / n;
+
+    function sseFor(v) {
+      var k = 4 * Math.PI * f / (100 * v);
+      // least squares with basis [1, cos(kd), sin(kd)]
+      var S11 = n, S12 = 0, S13 = 0, S22 = 0, S23 = 0, S33 = 0, c1 = 0, c2 = 0, c3 = 0;
+      for (var i = 0; i < n; i++) {
+        var cs = Math.cos(k * d[i]), sn = Math.sin(k * d[i]);
+        S12 += cs; S13 += sn; S22 += cs * cs; S23 += cs * sn; S33 += sn * sn;
+        c1 += A[i]; c2 += A[i] * cs; c3 += A[i] * sn;
+      }
+      // solve 3x3 system
+      var M = [[S11, S12, S13, c1], [S12, S22, S23, c2], [S13, S23, S33, c3]];
+      for (var col = 0; col < 3; col++) {
+        var piv = col;
+        for (var row = col + 1; row < 3; row++) if (Math.abs(M[row][col]) > Math.abs(M[piv][col])) piv = row;
+        var tmp = M[col]; M[col] = M[piv]; M[piv] = tmp;
+        if (Math.abs(M[col][col]) < 1e-12) return { sse: Infinity, coef: null };
+        for (var r2 = col + 1; r2 < 3; r2++) {
+          var fac = M[r2][col] / M[col][col];
+          for (var c4 = col; c4 < 4; c4++) M[r2][c4] -= fac * M[col][c4];
+        }
+      }
+      var x = [0, 0, 0];
+      for (var r3 = 2; r3 >= 0; r3--) {
+        var s = M[r3][3];
+        for (var c5 = r3 + 1; c5 < 3; c5++) s -= M[r3][c5] * x[c5];
+        x[r3] = s / M[r3][r3];
+      }
+      var sse = 0;
+      for (var j = 0; j < n; j++) {
+        var pred = x[0] + x[1] * Math.cos(k * d[j]) + x[2] * Math.sin(k * d[j]);
+        sse += (A[j] - pred) * (A[j] - pred);
+      }
+      return { sse: sse, coef: x, k: k };
+    }
+
+    var best = null, bestV = 0;
+    var vs = [];
+    for (var v = 300; v <= 400.001; v += 0.05) {
+      var r = sseFor(v);
+      if (r.sse === Infinity) continue;
+      vs.push({ v: v, sse: r.sse });
+      if (!best || r.sse < best.sse) { best = r; bestV = v; }
+    }
+    if (!best || best.sse >= Infinity || best.coef[1] * best.coef[1] + best.coef[2] * best.coef[2] < 1e-9) {
+      $('fitOut').style.display = 'block';
+      $('fitOut').innerHTML = 'The readings do not show a clear wave. Take more readings over a wider range of distances, or try the demo data.';
+      return;
+    }
+    var lam = 100 * bestV / f;                 // cm
+    var sst = 0;
+    for (var i2 = 0; i2 < n; i2++) sst += (A[i2] - Amean) * (A[i2] - Amean);
+    var r2 = 1 - best.sse / sst;
+    var vLo = null, vHi = null;
+    for (var t = 0; t < vs.length; t++) {
+      if (vs[t].sse <= 2 * best.sse) {
+        if (vLo === null) vLo = vs[t].v;
+        vHi = vs[t].v;
+      }
+    }
+    var amp = Math.sqrt(best.coef[1] * best.coef[1] + best.coef[2] * best.coef[2]);
+    var out = $('fitOut');
+    out.style.display = 'block';
+    out.innerHTML =
+      '<strong>Wavelength: ' + lam.toFixed(1) + ' cm</strong> at ' + f + ' Hz<br>' +
+      '<strong>Speed of sound: v = f&lambda; = ' + (f * lam / 100).toFixed(0) + ' m/s</strong>' +
+      ' (likely range ' + vLo.toFixed(0) + '&ndash;' + vHi.toFixed(0) + ' m/s)<br>' +
+      'Wave amplitude: ' + amp.toFixed(3) + ' &middot; fit quality R&sup2; = ' + r2.toFixed(3) + '<br>' +
+      'Accepted value: about 343 m/s at 20&nbsp;&deg;C.';
+    drawPlot(f, bestV, best.coef, best.k);
+  }
+
+  function drawPlot(f, v, coef, k) {
+    var cv = $('plot'), ctx = cv.getContext('2d');
+    var W = cv.width, H = cv.height, pad = 34;
+    ctx.clearRect(0, 0, W, H);
+    var ds = readings.map(function (r) { return r.d; });
+    var dMax = Math.max.apply(null, ds) * 1.05, dMin = 0;
+    var aMax = Math.max.apply(null, readings.map(function (r) { return r.a; })) * 1.15;
+    var aMin = Math.min(0, Math.min.apply(null, readings.map(function (r) { return r.a; })));
+    function X(dd) { return pad + (dd - dMin) / (dMax - dMin) * (W - 2 * pad); }
+    function Y(aa) { return H - pad - (aa - aMin) / (aMax - aMin) * (H - 2 * pad); }
+    // grid
+    ctx.strokeStyle = '#ece4f2'; ctx.fillStyle = '#948ca6';
+    ctx.font = '11px system-ui'; ctx.lineWidth = 1;
+    for (var g = 0; g <= 4; g++) {
+      var dd = dMin + (dMax - dMin) * g / 4;
+      var xx = X(dd);
+      ctx.beginPath(); ctx.moveTo(xx, pad); ctx.lineTo(xx, H - pad); ctx.stroke();
+      ctx.textAlign = 'center'; ctx.fillText(dd.toFixed(0), xx, H - pad + 16);
+    }
+    for (var g2 = 0; g2 <= 3; g2++) {
+      var aa = aMin + (aMax - aMin) * g2 / 3;
+      var yy = Y(aa);
+      ctx.beginPath(); ctx.moveTo(pad, yy); ctx.lineTo(W - pad, yy); ctx.stroke();
+      ctx.textAlign = 'right'; ctx.fillText(aa.toFixed(2), pad - 5, yy + 4);
+    }
+    ctx.textAlign = 'center'; ctx.fillText('distance from wall (cm)', (pad + W - pad) / 2, H - 3);
+    ctx.save(); ctx.translate(12, (pad + H - pad) / 2); ctx.rotate(-Math.PI / 2);
+    ctx.fillText('loudness', 0, 0); ctx.restore();
+    // fitted curve
+    ctx.strokeStyle = '#3d6f9e'; ctx.lineWidth = 2.2; ctx.beginPath();
+    for (var px = 0; px <= 240; px++) {
+      var dd2 = dMin + (dMax - dMin) * px / 240;
+      var aa2 = coef[0] + coef[1] * Math.cos(k * dd2) + coef[2] * Math.sin(k * dd2);
+      if (px === 0) ctx.moveTo(X(dd2), Y(aa2)); else ctx.lineTo(X(dd2), Y(aa2));
+    }
+    ctx.stroke();
+    // data points
+    ctx.fillStyle = '#c9a662';
+    readings.forEach(function (r) {
+      ctx.beginPath(); ctx.arc(X(r.d), Y(r.a), 3.4, 0, 2 * Math.PI); ctx.fill();
+    });
+  }
+
+  // ---------- demo / clear / csv ----------
+  function demo() {
+    stop();
+    var f = 1000;
+    $('freq').value = f;
+    readings = [];
+    var lamCm = 34.3, phi = 0.7;
+    for (var d = 5; d <= 50; d += 3) {
+      var a = 0.55 + 0.42 * Math.cos(4 * Math.PI * d / lamCm + phi) + (Math.random() - 0.5) * 0.02;
+      readings.push({ d: d, a: a });
+    }
+    renderTable();
+    note('Demo data loaded: pretend you measured this with a 1000 Hz tone. Press Fit the curve.');
+    $('fitOut').style.display = 'none';
+  }
+  function clearAll() {
+    readings = []; renderTable();
+    $('fitOut').style.display = 'none';
+    var cv = $('plot'); cv.getContext('2d').clearRect(0, 0, cv.width, cv.height);
+    note('');
+  }
+  function csv() {
+    var rows = ['distance_cm,amplitude'];
+    readings.forEach(function (r) { rows.push(r.d + ',' + r.a.toFixed(5)); });
+    var blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = 'speed-of-sound.csv'; a.click();
+  }
+
+  $('playBtn').addEventListener('click', play);
+  $('stopBtn').addEventListener('click', stop);
+  $('takeBtn').addEventListener('click', takeReading);
+  $('fitBtn').addEventListener('click', fit);
+  $('demoBtn').addEventListener('click', demo);
+  $('clearBtn').addEventListener('click', clearAll);
+  $('csvBtn').addEventListener('click', csv);
+</script>
+</body>
+</html>
