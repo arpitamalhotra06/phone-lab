@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone Physics Lab: drop height</title>
+<style>
+  :root { color-scheme:light; --bg:#fbf9fd; --fg:#40374c; --muted:#625770; --line:#dbd1e5; --accent:#315f8d; --bad:#a2221c; --ok:#236747; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:20px; background:var(--bg); color:var(--fg);
+         font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width:520px; margin-inline:auto; }
+  .back { display:inline-block; margin-bottom:14px; color:var(--accent); text-decoration:none; padding:6px 0; }
+  .back:hover { text-decoration:underline; }
+  h1 { font-size:1.3rem; margin:0 0 4px; }
+  h2 { font-size:1.05rem; margin:24px 0 8px; }
+  p { color:var(--muted); margin:0 0 14px; line-height:1.4; }
+  button { font:inherit; font-weight:600; padding:12px 22px; border-radius:8px; border:0;
+           background:var(--accent); color:#fff; cursor:pointer; }
+  button.secondary { background:transparent; color:var(--fg); border:1px solid var(--line); padding:8px 14px; }
+  button:disabled { opacity:.55; cursor:default; }
+  button:focus-visible, input:focus-visible, summary:focus-visible { outline:3px solid var(--fg); outline-offset:2px; }
+  #status { margin:14px 0; min-height:1.4em; }
+  #status.error { color:var(--bad); }
+  #status.ok { color:var(--ok); font-weight:600; }
+  table { width:100%; border-collapse:collapse; font-variant-numeric: tabular-nums; }
+  .live td { padding:8px 0; border-bottom:1px solid var(--line); font-size:1.4rem; }
+  .live td:first-child { color:var(--muted); font-size:1rem; width:40%; }
+  .live td:last-child { text-align:right; }
+  .log th, .log td { padding:8px 4px; border-bottom:1px solid var(--line); text-align:right; font-size:0.95rem; }
+  .log th:first-child, .log td:first-child { text-align:left; }
+  .log th { color:var(--muted); font-weight:600; }
+  #summary { margin-top:10px; color:var(--fg); min-height:1.4em; }
+  label { display:block; color:var(--muted); margin-bottom:4px; }
+  input { font:inherit; padding:8px; width:7em; border-radius:6px; border:1px solid var(--line);
+          background:transparent; color:var(--fg); }
+  .row { display:flex; gap:16px; flex-wrap:wrap; margin-bottom:12px; }
+  .auto { color:var(--muted); margin:6px 0 14px; line-height:1.5; }
+  details { margin-top:14px; }
+  summary { color:var(--muted); cursor:pointer; }
+  small { color:var(--muted); display:block; margin-top:10px; line-height:1.4; }
+</style>
+</head>
+<body>
+  <a class="back" href="index.html">&larr; All experiments</a>
+  <h1>Drop height meter</h1>
+  <p>Try the demo first. For a live trial, tap Start and hold the phone still until it says Ready. Release it from about 5–10 cm above the centre of a thick pillow on a bed. Do not push or spin it, and never drop it onto a hard surface.</p>
+
+  <p class="auto">Threshold (auto): <b id="thAuto">set when you tap Start</b><br>Min duration: <b id="minAuto">--</b> ms</p>
+
+  <div class="row">
+    <button id="start">Start</button>
+    <button class="secondary" id="stop" disabled>Stop</button>
+    <button class="secondary" id="demo">Load demo drop</button>
+  </div>
+  <div id="status" role="status"></div>
+
+  <table class="live">
+    <tr><td>|a|</td><td><span id="mag">--</span> m/s²</td></tr>
+    <tr><td>Rate</td><td><span id="rate">--</span> Hz</td></tr>
+    <tr><td>State</td><td><span id="state">idle</span></td></tr>
+  </table>
+
+  <details>
+    <summary>Advanced: override the automatic settings</summary>
+    <div class="row" style="margin-top:10px">
+      <div><label for="thManual">Threshold (m/s²)</label><input id="thManual" type="number" min="0.5" max="6" step="0.1" placeholder="auto"></div>
+      <div><label for="minManual">Min duration (ms)</label><input id="minManual" type="number" min="20" max="500" step="10" placeholder="auto"></div>
+    </div>
+  </details>
+
+  <h2>Drops</h2>
+  <table class="log">
+    <thead><tr><th>Trial</th><th>t (s)</th><th>min |a|</th><th>height (cm)</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <div id="summary"></div>
+  <div class="row" style="margin-top:12px">
+    <button class="secondary" id="copy">Copy table</button>
+    <button class="secondary" id="clear">Clear</button>
+  </div>
+  <small>
+    Height = ½ g t², with g = 9.8 m/s² and t the time the phone spent in free fall.
+    Threshold = 0.5 × the phone's own reading at rest, measured when you tap Start.
+    Free fall is detected when |a| (gravity included) stays below the threshold for at least the minimum duration (80 ms by default). Very short falls can be missed.
+    After each drop the next 1 s is ignored so bounces are not counted.
+    Sampling rate and sensor filtering vary by phone. The height is an estimate, and a soft landing can shift the detected end. Demo trials use simulated sensor data.
+  </small>
+
+<script>
+(() => {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const statusEl = $("status");
+  const G = 9.8;                // m/s2, used to turn fall time into height
+  const TH_FRACTION = 0.5;      // threshold = this x resting |a|
+  const MIN_MS_DEFAULT = 80;
+  const CAL_MS = 2000;
+  const CAL_MAX_SD = 0.4;       // m/s2: more movement than this restarts calibration
+  const LOCKOUT_MS = 1000;      // ignore bounces after a recorded drop
+  const MAX_GAP_MS = 100;       // do not infer free fall across missing samples
+
+  let count = 0, lastRateTime = 0;
+  let falling = false, tStart = 0, minMag = 99, prevMag = null, prevT = null;
+  let lockUntil = 0;
+  let calibrating = false, calStart = 0, calSamples = [];
+  let restA = null;
+  let active = false, pending = false, watchdog = 0, lastValid = 0;
+  let fallTh, fallMin;
+  const trials = [];
+
+  function setStatus(msg, cls) { statusEl.textContent = msg; statusEl.className = cls || ""; }
+
+  function autoTh() { return restA === null ? null : TH_FRACTION * restA; }
+  function setting(id, fallback) {
+    const input = $(id);
+    const n = input.valueAsNumber;
+    return Number.isFinite(n) && n >= Number(input.min) && n <= Number(input.max) ? n : fallback;
+  }
+  function currentTh() { return setting("thManual", autoTh()); }
+  function currentMinMs() { return setting("minManual", MIN_MS_DEFAULT); }
+
+  function updateAuto() {
+    const th = autoTh();
+    $("thAuto").textContent = th === null ? "set when you tap Start" : th.toFixed(2) + " m/s²";
+    $("minAuto").textContent = MIN_MS_DEFAULT;
+  }
+
+  function heightCm(t) { return 0.5 * G * t * t * 100; }
+
+  function recordTrial(t, minA, th, minMs, demo = false) {
+    trials.push({ t, minA, h: heightCm(t), th, minMs, demo });
+    render();
+    setStatus((demo ? "Simulated drop: " : "Fall time ") + t.toFixed(3) + " s, height " + heightCm(t).toFixed(1) + " cm.", "ok");
+  }
+
+  function render() {
+    $("rows").innerHTML = trials.map((r, i) =>
+      "<tr><td>" + (i + 1) + (r.demo ? " (demo)" : "") + "</td><td>" + r.t.toFixed(3) + "</td><td>" +
+      r.minA.toFixed(2) + "</td><td>" + r.h.toFixed(1) + "</td></tr>").join("");
+    const live = trials.filter(r => !r.demo);
+    const n = live.length;
+    if (n === 0) { $("summary").textContent = trials.length ? "Demo only. Not a live measurement." : ""; return; }
+    const mean = live.reduce((s, r) => s + r.h, 0) / n;
+    if (n === 1) { $("summary").textContent = "Mean height: " + mean.toFixed(1) + " cm (1 drop)"; return; }
+    const sd = Math.sqrt(live.reduce((s, r) => s + (r.h - mean) * (r.h - mean), 0) / (n - 1));
+    $("summary").textContent = "Mean height: " + mean.toFixed(1) + " cm, std dev " + sd.toFixed(1) + " cm (" + n + " drops)";
+  }
+
+  function finishCalibration(t) {
+    const n = calSamples.length;
+    const mean = calSamples.reduce((s, v) => s + v, 0) / n;
+    const sd = Math.sqrt(calSamples.reduce((s, v) => s + (v - mean) * (v - mean), 0) / n);
+    if (n < 10 || sd > CAL_MAX_SD || mean < 7 || mean > 13) {
+      calStart = t; calSamples = [];
+      setStatus("Could not get a stable reading near 9.8 m/s². Keep the phone still while it retries.", "error");
+      return;
+    }
+    restA = mean;
+    calibrating = false;
+    prevMag = null; prevT = null; falling = false;
+    updateAuto();
+    $("state").textContent = "ready";
+    setStatus("Ready. Resting |a| = " + mean.toFixed(2) + " m/s².", "ok");
+  }
+
+  function handleMotion(e) {
+    const a = e.accelerationIncludingGravity;
+    if (!active || !a || ![a.x, a.y, a.z].every(Number.isFinite)) return;
+    lastValid = performance.now();
+    const t = Number.isFinite(e.timeStamp) && Math.abs(lastValid - e.timeStamp) < 5000
+      ? e.timeStamp : lastValid;
+    processSample(Math.hypot(a.x, a.y, a.z), t);
+  }
+
+  function processSample(mag, t, demo = false) {
+    $("mag").textContent = mag.toFixed(2);
+    count++;
+    if (t - lastRateTime >= 1000) {
+      $("rate").textContent = Math.round(count * 1000 / (t - lastRateTime));
+      count = 0; lastRateTime = t;
+    }
+
+    if (calibrating) {
+      if (prevT !== null && t <= prevT) return;
+      if (prevT === null || t - prevT > MAX_GAP_MS) {
+        calStart = t; calSamples = [];
+      }
+      prevT = t;
+      calSamples.push(mag);
+      $("state").textContent = "calibrating";
+      if (t - calStart >= CAL_MS) finishCalibration(t);
+      return;
+    }
+
+    if (restA === null) return;
+    if (t < lockUntil) {
+      $("state").textContent = "waiting for bounce";
+      prevMag = null; prevT = null;
+      return;
+    }
+    if (prevT !== null && t <= prevT) return;
+    if (prevT !== null && t - prevT > MAX_GAP_MS) {
+      if (falling) setStatus("A sensor gap interrupted the drop. Try again.", "error");
+      falling = false; prevMag = null; prevT = null;
+    }
+
+    const TH = falling ? fallTh : demo ? 4.9 : currentTh();
+    const MIN = falling ? fallMin : demo ? MIN_MS_DEFAULT : currentMinMs();
+
+    if (!falling && mag < TH && prevMag !== null && prevMag >= TH) {
+      tStart = prevT + (t - prevT) * (prevMag - TH) / (prevMag - mag);
+      minMag = mag; falling = true;
+      fallTh = TH; fallMin = MIN;
+      $("state").textContent = "falling";
+    } else if (falling && mag < TH) {
+      if (mag < minMag) minMag = mag;
+    } else if (falling && mag >= TH) {
+      const tEnd = prevT + (t - prevT) * (TH - prevMag) / (mag - prevMag);
+      const dur = tEnd - tStart;
+      falling = false;
+      $("state").textContent = "ready";
+      if (dur >= MIN) { recordTrial(dur / 1000, minMag, TH, MIN, demo); lockUntil = t + LOCKOUT_MS; }
+      else setStatus("Ignored a dip of " + Math.round(dur) + " ms (below the minimum of " + Math.round(MIN) + " ms).", "");
+    } else if (!falling) {
+      $("state").textContent = "ready";
+    }
+    prevMag = mag; prevT = t;
+  }
+
+  function stop(message, cls) {
+    active = false;
+    window.removeEventListener("devicemotion", handleMotion);
+    clearInterval(watchdog);
+    calibrating = false; falling = false; restA = null;
+    prevMag = null; prevT = null; lockUntil = 0;
+    $("start").disabled = pending;
+    $("stop").disabled = true;
+    $("mag").textContent = $("rate").textContent = "--";
+    $("state").textContent = "idle";
+    updateAuto();
+    if (message) setStatus(message, cls);
+  }
+
+  async function start() {
+    if (active || pending) return;
+    if (!window.isSecureContext) { setStatus("Page must be served over HTTPS.", "error"); return; }
+    if (typeof DeviceMotionEvent === "undefined") { setStatus("This browser does not expose motion sensors. Open the GitHub Pages link on your phone, or try the demo.", "error"); return; }
+    if (typeof DeviceMotionEvent.requestPermission === "function") {
+      pending = true;
+      $("start").disabled = $("demo").disabled = true;
+      try {
+        const result = await DeviceMotionEvent.requestPermission();
+        if (result !== "granted") { setStatus("Motion permission was denied. Allow motion access for the site, then try again, or use the demo.", "error"); return; }
+      } catch (err) { setStatus("Permission request failed: " + err.message, "error"); return; }
+      finally { pending = false; $("start").disabled = $("demo").disabled = false; }
+    }
+    active = true;
+    $("start").disabled = true;
+    $("stop").disabled = false;
+    lastRateTime = performance.now(); count = 0;
+    lastValid = calStart = lastRateTime;
+    calibrating = true; calSamples = [];
+    $("state").textContent = "waiting for sensor";
+    setStatus("Waiting for motion data. Keep the phone still.");
+    window.addEventListener("devicemotion", handleMotion);
+    watchdog = setInterval(() => {
+      if (performance.now() - lastValid >= 3500) {
+        stop("No usable motion data arrived. Open the GitHub Pages link directly in your phone browser (not an in-app preview), allow motion access if asked, or use the demo.", "error");
+      }
+    }, 250);
+  }
+
+  $("start").addEventListener("click", start);
+  $("stop").addEventListener("click", () => stop("Stopped."));
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden && active) stop("Paused when you left the page. Tap Start to recalibrate.");
+  });
+  $("demo").addEventListener("click", () => {
+    stop();
+    restA = 9.8; count = 0; lastRateTime = 0;
+    for (let t = 0; t <= 300; t += 10) {
+      processSample(t >= 110 && t < 240 ? 0.3 : 9.5, t, true);
+    }
+    stop();
+    $("state").textContent = "demo finished";
+  });
+  $("clear").addEventListener("click", () => { trials.length = 0; render(); setStatus("Cleared."); });
+  $("copy").addEventListener("click", async () => {
+    if (!trials.length) { setStatus("No trials to copy yet."); return; }
+    const head = "drop\tsource\tt_s\tmin_a_m_s2\theight_cm\tthreshold_m_s2\tmin_ms";
+    const text = head + "\n" +
+      trials.map((r, i) => [i+1, r.demo ? "demo" : "live", r.t.toFixed(3), r.minA.toFixed(2),
+        r.h.toFixed(1), r.th.toFixed(2), Math.round(r.minMs)].join("\t")).join("\n");
+    try { await navigator.clipboard.writeText(text); setStatus("Table copied."); }
+    catch (e) {
+      const url = URL.createObjectURL(new Blob([text], {type:"text/tab-separated-values"}));
+      const link = document.createElement("a");
+      link.href = url; link.download = "drop-height.tsv"; link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setStatus("Clipboard unavailable. Table offered as a TSV download.");
+    }
+  });
+
+  updateAuto();
+})();
+</script>
+</body>
+</html>
