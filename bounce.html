@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bouncing ball energy loss | Phone Lab</title>
+<style>
+:root{color-scheme:light;--ink:#34304b;--accent:#544591;--soft:#efeafb;--line:#ded8e9}
+*{box-sizing:border-box}body{max-width:640px;margin:auto;padding:18px;background:#fbf9fd;color:var(--ink);font:16px/1.5 system-ui,sans-serif}
+a{color:var(--accent)}h1{margin:.35em 0}h2{margin:0 0 .4em;font-size:1.18rem}p{margin:.5em 0}
+section{background:white;border:1px solid var(--line);border-radius:16px;margin:14px 0;padding:16px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:.8em 0}button,input,textarea{font:inherit}button{background:var(--accent);color:white;border:0;border-radius:9px;padding:10px 13px}
+button.secondary{background:var(--soft);color:#443278}button:disabled{opacity:.55}
+textarea,input[type=range]{width:100%}textarea{border:1px solid var(--line);padding:8px;border-radius:7px}
+svg{width:100%;height:auto;display:block;background:#f7f4fc;border-radius:9px;margin:8px 0}
+table{width:100%;border-collapse:collapse;font-size:.93rem}td,th{padding:6px;border-bottom:1px solid var(--line);text-align:right}td:first-child,th:first-child{text-align:left}
+#peaks{display:flex;gap:8px;flex-wrap:wrap}#peaks label{padding:6px 9px;background:var(--soft);border-radius:7px}
+</style>
+</head>
+<body>
+<a href="index.html">← Phone Lab</a>
+<h1>Bouncing ball energy loss</h1>
+<p>Use the time between bounce sounds to estimate how high the ball rebounds and how much energy it loses.</p>
+<section>
+<h2>Record the bounces</h2>
+<p>Put your phone on a table beside a hard floor in a quiet room. Tap <strong>Record bounces</strong> and allow microphone access. Wait for <strong>Drop the ball now</strong>, then release a bouncy ball without pushing it. Keep the phone out of the ball’s path and stay quiet until the bounces finish.</p>
+<div class="row"><button id="start">Record bounces</button><button id="stop" class="secondary" disabled>Finish recording</button><button id="demo" class="secondary">Try simulated bounces</button></div>
+<p id="status" role="status">Recording lasts up to ten seconds. No audio is uploaded.</p>
+<div id="detected" hidden>
+<p>These are candidate impacts. Untick taps, footsteps or obvious duplicates. If quiet bounces were missed, try raising the sensitivity.</p>
+<label for="sensitivity">Microphone detection sensitivity</label>
+<input id="sensitivity" type="range" min="1" max="5" step="1" value="3">
+<svg id="wave" viewBox="0 0 490 100" role="img" aria-label="Microphone level and detected impact times"></svg>
+<div id="peaks"></div>
+</div>
+<details>
+<summary>Enter impact times manually instead</summary>
+<p>Paste times in seconds from a recording, separated by commas, spaces or new lines. Start with the first impact, not the release.</p>
+<form id="manual"><label for="times">Impact times (s)</label><textarea id="times" rows="2" placeholder="0, 0.65, 1.15, 1.54"></textarea><button>Use these times</button></form>
+</details>
+</section>
+<section>
+<h2>Rebound height and energy</h2>
+<p id="result" role="status">At least two impacts give one rebound height. At least three give an energy loss estimate.</p>
+<div id="results" hidden>
+<table><thead><tr><th scope="col">Rebound after</th><th scope="col">Flight (s)</th><th scope="col">Height (cm)</th><th scope="col">Energy loss</th></tr></thead><tbody id="rows"></tbody></table>
+</div>
+<p>We estimate height as <strong>g × flight time² ÷ 8</strong>. We estimate the loss at the next impact by comparing consecutive rebound heights. This measures the ball’s vertical mechanical energy under a simple model, not an exact total energy loss.</p>
+</section>
+<script>
+(() => {
+  'use strict';
+  const $=id=>document.getElementById(id), G=9.80665;
+  let session=null, feature=null;
+  const say=s=>{$('status').textContent=s;};
+  function turns(times) {
+    const flights=times.slice(1).map((t,i)=>t-times[i]);
+    return flights.map((dt,i)=>({dt,height:G*dt*dt/8,loss:i?100*(1-(dt/flights[i-1])**2):null}));
+  }
+  function show(times,source) {
+    $('results').hidden=true;
+    if (times.length<2) { $('result').textContent=`${source}: Keep at least two impact times.`; return; }
+    const rows=turns(times), suspect=rows.some(row=>row.loss!==null&&row.loss<=0);
+    $('rows').innerHTML=rows.map((r,i)=>`<tr><td>Impact ${i+1}</td><td>${r.dt.toFixed(3)}</td><td>${(r.height*100).toFixed(1)}</td><td>${r.loss===null?'Not known':r.loss<=0?'Check marks':r.loss.toFixed(1)+'%'}</td></tr>`).join('');
+    $('results').hidden=false;
+    let note='The first impact’s loss cannot be found directly from impact sounds alone.';
+    if (rows.length>=2 && !suspect) {
+      const estimated=rows[0].height*(rows[0].height/rows[1].height);
+      note+=` Inferred drop height: ${(estimated*100).toFixed(1)} cm, assuming the first two impacts lost the same fraction of energy.`;
+    }
+    if (suspect) note+=' Some intervals didn’t shrink. Check for missed or extra sounds.';
+    $('result').textContent=`${source}. ${note}`;
+  }
+  function levels(input,rate) {
+    const hop=Math.max(1,Math.round(rate*.004)), bins=[];
+    let prev=0;
+    for (let i=0;i+hop<=input.length;i+=hop) {
+      let sum=0;
+      for(let k=i;k<i+hop;k++){const v=input[k]-prev;prev=input[k];sum+=v*v;}
+      bins.push(Math.sqrt(sum/hop));
+    }
+    return {bins,step:hop/rate};
+  }
+  function findPeaks(f, sensitivity) {
+    if (!f.bins.length) return [];
+    const {bins,step}=f;
+    const quiet=bins.slice(0,Math.floor(.25/step)).sort((a,b)=>a-b);
+    const floor=quiet[Math.floor(.7*quiet.length)]||0;
+    const max=Math.max(...bins), gate=Math.max(.00012, floor*4, max*[.15,.09,.05,.024,.009][sensitivity-1]);
+    let wait=0; const minGap=Math.ceil(.08/step), times=[];
+    for(let i=Math.ceil(.26/step);i<bins.length;i++) {
+      if(i>=wait && bins[i]>=gate && bins[i-1]<gate) { times.push(i*step); wait=i+minGap; }
+    }
+    return times;
+  }
+  function review() {
+    if(!feature) return;
+    const hits=findPeaks(feature,Number($('sensitivity').value)), {bins,step}=feature;
+    const duration=bins.length*step, high=Math.max(.00012,...bins);
+    const X=t=>10+t/duration*470;
+    const line=[];
+    for(let i=0;i<470;i++){
+      const from=Math.floor(i*bins.length/470), end=Math.max(from+1,Math.floor((i+1)*bins.length/470));
+      let v=0;for(let j=from;j<end;j++) v=Math.max(v,bins[j]||0);
+      line.push(`${i?'L':'M'}${10+i},${(84-70*v/high).toFixed(1)}`);
+    }
+    $('wave').innerHTML=`<path d="${line.join(' ')}" fill="none" stroke="#544591"/>`+hits.map(t=>`<line x1="${X(t)}" y1="10" x2="${X(t)}" y2="88" stroke="#ac7520"/>`).join('');
+    $('peaks').replaceChildren();
+    const selected=()=>show([...$('peaks').querySelectorAll('input:checked')].map(input=>hits[Number(input.value)]),'Microphone estimates');
+    hits.forEach((t,i)=>{
+      const label=document.createElement('label'), input=document.createElement('input');
+      input.type='checkbox';input.checked=true;input.value=i;input.onchange=selected;
+      label.append(input,` ${t.toFixed(3)} s`);$('peaks').append(label);
+    });
+    $('detected').hidden=false; selected();
+    say(hits.length?`${hits.length} candidate impacts found. Check that they match the bounces.`:'No clear bounce sounds. Try a quieter room, bring the phone closer, or adjust sensitivity.');
+  }
+  const processor=`
+    class BounceCapture extends AudioWorkletProcessor {
+      constructor() {
+        super(); this.data=null; this.i=0;
+        this.port.onmessage=({data})=>{
+          if(data==='record'){ this.data=new Float32Array(Math.ceil(sampleRate*10)); this.i=0; }
+          if(data==='finish') this.finish();
+        };
+      }
+      finish(){
+        if(!this.data) return;
+        const data=this.data; this.data=null;
+        this.port.postMessage({data,length:this.i},[data.buffer]);
+      }
+      process(inputs){
+        if(this.data){
+          const ch=inputs[0]?.[0];
+          if(ch?.length){
+            const n=Math.min(ch.length,this.data.length-this.i);
+            this.data.set(ch.subarray(0,n),this.i); this.i+=n;
+            if(this.i>=this.data.length)this.finish();
+          }
+        }
+        return true;
+      }
+    }
+    registerProcessor('bounce-capture',BounceCapture);`;
+  function release(run) {
+    if(!run)return;
+    clearTimeout(run.readyTimer);clearTimeout(run.timer);
+    run.stream?.getTracks().forEach(t=>t.stop());
+    if(run.ctx && run.ctx.state!=='closed')run.ctx.close().catch(()=>{});
+    if(session!==run)return;
+    session=null;$('start').disabled=false;$('demo').disabled=false;$('stop').disabled=true;
+  }
+  $('start').onclick=async()=>{
+    if(session)return;
+    const Audio=window.AudioContext||window.webkitAudioContext;
+    if(!window.isSecureContext||!navigator.mediaDevices?.getUserMedia||!Audio){say('Microphone capture is unavailable here. Open the HTTPS site directly, or use manual times.');return;}
+    const run={};session=run; $('start').disabled=true;$('demo').disabled=true;
+    try {
+      run.ctx=new Audio(); const resumed=run.ctx.resume(); resumed.catch(()=>{});
+      say('Waiting for microphone permission…');
+      run.stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false},video:false});
+      if(session!==run){release(run);return;}
+      await resumed;
+      if(!run.ctx.audioWorklet||typeof AudioWorkletNode==='undefined')throw new Error('This browser cannot capture time-accurate audio. Try Safari or enter impact times manually.');
+      const url=URL.createObjectURL(new Blob([processor],{type:'text/javascript'}));
+      try{await run.ctx.audioWorklet.addModule(url);}finally{URL.revokeObjectURL(url);}
+      if(session!==run)return;
+      const capture=new AudioWorkletNode(run.ctx,'bounce-capture'), quiet=run.ctx.createGain();
+      quiet.gain.value=0;run.ctx.createMediaStreamSource(run.stream).connect(capture).connect(quiet).connect(run.ctx.destination);
+      run.capture=capture;
+      capture.port.onmessage=({data})=>{
+        if(session!==run)return;
+        const f=data.length > run.ctx.sampleRate*.3 ? levels(data.data.subarray(0,data.length),run.ctx.sampleRate):null;
+        release(run);
+        if(!f){say('Recording was too short. Try again.');return;}
+        feature=f;review();
+      };
+      capture.onprocessorerror=()=>{if(session===run){release(run);say('The browser interrupted audio capture. Try again or enter times manually.');}};
+      run.stream.getAudioTracks()[0].onended=()=>{if(session===run){release(run);say('The microphone disconnected. Try again.');}};
+      $('detected').hidden=true;feature=null;$('results').hidden=true;$('result').textContent='Recording a new trial…';
+      say('Hold the ball still for a moment…');
+      capture.port.postMessage('record');
+      run.readyTimer=setTimeout(()=>say('Drop the ball now. Tap Finish recording after the impacts stop.'),500);
+      run.timer=setTimeout(()=>{if(session===run){release(run);say('No complete audio recording arrived. Check the microphone or enter impact times manually.');}},12000);
+      $('stop').disabled=false;
+    } catch(e){if(session===run){release(run);say(e.name==='NotAllowedError'?'Microphone access was denied. Allow it for this site or enter times manually.':e.message||'Could not open the microphone.');}}
+  };
+  $('stop').onclick=()=>{
+    if(!session?.capture)return;
+    clearTimeout(session.readyTimer);$('stop').disabled=true;say('Checking the recording…');session.capture.port.postMessage('finish');
+  };
+  document.addEventListener('visibilitychange',()=>{if(document.hidden&&session){release(session);say('Stopped because the page was hidden.');}});
+  $('sensitivity').oninput=review;
+  $('demo').onclick=()=>{$('detected').hidden=true;feature=null;show([0,.65,1.15,1.54,1.84],'Simulated bounces');say('Simulated example. The microphone was not used.');};
+  $('manual').onsubmit=e=>{
+    e.preventDefault();
+    if(session)return;
+    const times=$('times').value.trim().split(/[,\s]+/).map(Number);
+    if(times.length<2 || times.some((t,i)=>!Number.isFinite(t)||t<0||(i&&t<=times[i-1]))) { say('Enter at least two non-negative times in increasing order.');return; }
+    $('detected').hidden=true;feature=null; show(times,'Manually entered impact times');say('Calculated from your typed times, not a live recording.');
+  };
+})();
+</script>
+</body>
+</html>
