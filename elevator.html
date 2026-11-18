@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Elevator ride | Phone Lab</title>
+<style>
+:root{color-scheme:light;--ink:#34304b;--accent:#355d85;--soft:#e9f2fb;--line:#ded8e9}
+*{box-sizing:border-box}body{max-width:640px;margin:auto;padding:18px;background:#fbf9fd;color:var(--ink);font:16px/1.5 system-ui,sans-serif}
+a{color:var(--accent)}h1{margin:.35em 0}h2{margin:0 0 .4em;font-size:1.18rem}p{margin:.5em 0}
+section{background:white;border:1px solid var(--line);border-radius:16px;margin:14px 0;padding:16px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:.8em 0}button,input{font:inherit}button{background:var(--accent);color:white;border:0;border-radius:9px;padding:10px 13px}
+button.secondary{background:var(--soft);color:#274f77}button:disabled{opacity:.55}input{width:100%;padding:8px;border:1px solid var(--line);border-radius:7px}
+form label{flex:1 1 175px}svg{width:100%;height:auto;display:block;background:#f6f9fd;border-radius:9px}svg text{font:13px system-ui;fill:#34304b}
+</style>
+</head>
+<body>
+<a href="index.html">← Phone Lab</a>
+<h1>Elevator ride</h1>
+<p>Use your phone’s accelerometer to see how apparent weight changes when a lift starts and stops.</p>
+<section>
+<h2>Record a ride</h2>
+<p>While the lift is stopped, hold the phone flat, screen up, and tap <strong>Start recording</strong>. Keep still until the page says to start the ride. Don’t walk, tilt the phone or lock the screen during the recording. Tap <strong>Stop</strong> after the lift has stopped.</p>
+<div class="row"><button id="start">Start recording</button><button id="stop" class="secondary" disabled>Stop</button><button id="demo" class="secondary">Try simulated ride</button></div>
+<p id="status" role="status">Waiting to start.</p>
+<p id="summary"></p>
+<div id="chart" hidden>
+<svg id="graph" viewBox="0 0 490 240" role="img" aria-label="Vertical acceleration in metres per second squared versus time"></svg>
+<p>Positive acceleration means you feel heavier; negative means lighter. Near zero can mean either constant speed or standing still. The graph shows acceleration, not velocity.</p>
+</div>
+</section>
+<section>
+<h2>Optional: estimate height from pressure</h2>
+<p>iPhone Safari does not supply barometer readings to this page. If you already have pressure readings taken in the same lift while stopped at each floor, enter them here. You don’t need pressure readings for the acceleration experiment.</p>
+<form id="pressure">
+<div class="row">
+<label>Start pressure (hPa)<input id="p0" type="number" inputmode="decimal" min="300" max="1100" step="any" required></label>
+<label>Finish pressure (hPa)<input id="p1" type="number" inputmode="decimal" min="300" max="1100" step="any" required></label>
+</div>
+<button>Estimate height change</button>
+</form>
+<p id="height" role="status"></p>
+<p>This is a standard-atmosphere approximation. Pressure changes from ventilation can affect the result.</p>
+</section>
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id), G = 9.80665;
+  let phase='idle', samples=[], base=[], zero=0, sign=1, startTime=0, firstBase=0, last=0, timer=0, bad=false;
+  const say = s => { $('status').textContent=s; };
+  function baseline(zs) {
+    const mean=zs.reduce((s,z)=>s+z,0)/zs.length;
+    const rms=Math.sqrt(zs.reduce((s,z)=>s+(z-mean)**2,0)/zs.length);
+    return {zero:mean, sign:Math.sign(mean), rms};
+  }
+  function draw(data) {
+    if (!data.length) return;
+    const max=Math.max(1,...data.map(p=>Math.abs(p.a)))*1.1, end=Math.max(1,data.at(-1).t);
+    const X=t=>58+405*t/end, Y=a=>103-76*a/max;
+    const path=data.map((p,i)=>`${!i || p.t-data[i-1].t>.3?'M':'L'}${X(p.t).toFixed(1)},${Y(p.a).toFixed(1)}`).join(' ');
+    const grid=[-max,0,max].map(v=>`<line x1="58" y1="${Y(v)}" x2="463" y2="${Y(v)}" stroke="${v===0?'#8c92a7':'#ded8e9'}"/><text x="51" y="${Y(v)+4}" text-anchor="end">${v.toFixed(1)}</text>`).join('');
+    $('graph').innerHTML=`<text x="58" y="19">Vertical acceleration (m/s²)</text>${grid}<path d="${path}" fill="none" stroke="#355d85" stroke-width="2.25"/><text x="58" y="202">0 s</text><text x="463" y="202" text-anchor="end">${end.toFixed(1)} s</text><text x="260" y="224" text-anchor="middle">Time</text>`;
+    $('chart').hidden=false;
+    const lo=Math.min(...data.map(p=>p.a)), hi=Math.max(...data.map(p=>p.a));
+    $('summary').textContent=`Current apparent weight: ${((1+data.at(-1).a/G)*100).toFixed(1)}% of your resting weight. Recorded acceleration: ${lo.toFixed(2)} to ${hi.toFixed(2)} m/s².`;
+  }
+  function finish(message) {
+    clearInterval(timer); window.removeEventListener('devicemotion',motion);
+    phase='idle'; $('start').disabled=false; $('demo').disabled=false; $('stop').disabled=true;
+    if (samples.length > 1) draw(samples);
+    say(message);
+  }
+  function motion(e) {
+    if (phase!=='calibrate' && phase!=='record') return;
+    const m=e.accelerationIncludingGravity;
+    if (!m || ![m.x,m.y,m.z].every(Number.isFinite)) return;
+    const now=performance.now(), prior=last; last=now;
+    const flat=Math.hypot(m.x,m.y) < 2.5 && Math.abs(m.z)>7 && Math.abs(m.z)<13;
+    if (phase==='calibrate') {
+      if (!flat || (prior && now-prior>350)) { base=[]; firstBase=0; return; }
+      if (!firstBase) firstBase=now;
+      base.push(m.z);
+      if (now-firstBase>=1900 && base.length>=8) {
+        const cal=baseline(base);
+        if (cal.rms>.28) { base=[]; firstBase=0; say('The phone moved. Hold it flat and still while the lift is stopped.'); return; }
+        zero=cal.zero; sign=cal.sign; phase='record'; startTime=now; say('Recording. You can start the ride now.');
+      }
+      return;
+    }
+    if (!flat || Math.sign(m.z)!==sign) { bad=true; return; }
+    const previous=samples.at(-1);
+    if (previous && (now-startTime)/1000-previous.t>.3) bad=true;
+    if (!previous || (now-startTime)/1000-previous.t>=.024) samples.push({t:(now-startTime)/1000,a:sign*(m.z-zero)});
+  }
+  $('start').onclick=async()=>{
+    if (phase!=='idle') return;
+    if (!window.isSecureContext || !window.DeviceMotionEvent) { say('Motion data is unavailable here. Open the HTTPS GitHub Pages site on a phone, or try the demo.'); return; }
+    phase='permission'; $('start').disabled=true; $('demo').disabled=true; say('Waiting for motion permission…');
+    try {
+      if (typeof window.DeviceMotionEvent.requestPermission==='function' && await window.DeviceMotionEvent.requestPermission()!=='granted') { finish('Motion permission was denied. Allow motion access for this site or try the demo.'); return; }
+      phase='calibrate'; samples=[]; base=[]; firstBase=0; last=0; bad=false;
+      $('chart').hidden=true; $('summary').textContent=''; $('stop').disabled=false;
+      say('Hold the phone flat and still while the lift is stopped. Calibrating…');
+      const began=performance.now();
+      window.addEventListener('devicemotion',motion);
+      timer=setInterval(()=>{
+        const now=performance.now();
+        if ((!last && now-began>4500) || (last && now-last>4500)) { finish('No usable live motion data arrived. Try opening this page directly in Safari, or try the demo.'); return; }
+        if (phase==='calibrate' && now-began>15000) { finish('Could not establish a stable baseline. Try again with the lift stopped and your phone flat.'); return; }
+        if (phase==='record') {
+          draw(samples);
+          if (now-startTime>60000) finish('Stopped at the 60 s limit.'+(bad?' Some samples were skipped; repeat if needed.':''));
+        }
+      },220);
+    } catch { finish('Could not access motion. Check site permissions or try the simulated ride.'); }
+  };
+  $('stop').onclick=()=>finish(samples.length>1?'Recording stopped.'+(bad?' Some data was skipped because the phone tilted or readings were interrupted.':''):'Stopped before enough ride data was collected.');
+  document.addEventListener('visibilitychange',()=>{if(document.hidden && (phase==='record'||phase==='calibrate')) finish('Recording stopped because the page was hidden.');});
+  $('demo').onclick=()=>{
+    const data=Array.from({length:161},(_,i)=>{
+      const t=i/20, bump=(start,d)=>t>=start&&t<=start+d?Math.sin(Math.PI*(t-start)/d):0;
+      return {t,a:1.05*(bump(1,1.4)-bump(5.2,1.4))};
+    });
+    draw(data); say('Simulated ride. These are example values, not sensor readings.');
+  };
+  function rise(p0,p1) { return 44330*((p0/1013.25)**.190263-(p1/1013.25)**.190263); }
+  $('pressure').onsubmit=e=>{
+    e.preventDefault();
+    const metres=rise($('p0').valueAsNumber,$('p1').valueAsNumber);
+    $('height').textContent=`Estimated height change: ${metres.toFixed(2)} m (positive is upwards).`;
+  };
+})();
+</script>
+</body>
+</html>
