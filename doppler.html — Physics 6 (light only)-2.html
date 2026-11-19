@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Doppler effect — Phone Lab</title>
+<style>
+  :root {
+    --bg:#fbf9fd; --fg:#4d4659; --muted:#6f657e; --line:#ece4f2;
+    --accent:#8fb9e8; --accent-ink:#3d6f9e; --soft:#eaf2fa; --card:#ffffff; --gold:#c9a662;
+  }  * { box-sizing: border-box; }
+  body { margin:0; padding:20px; background:var(--bg); color:var(--fg);
+         font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width:520px; margin-inline:auto; }
+  a.back { color:var(--muted); text-decoration:none; font-size:.9rem; }
+  h1 { font-size:1.5rem; margin:10px 0 4px; }
+  h2 { font-size:1.15rem; margin:0 0 10px; padding-bottom:6px; border-bottom:2px solid var(--accent); }
+  p.lead { color:var(--muted); margin:0 0 8px; line-height:1.45; }
+  .card { padding:14px; margin-bottom:12px; border:1px solid var(--line); border-radius:14px; background:var(--card); }
+  .note { font-size:.85rem; color:var(--muted); line-height:1.45; }
+  .btn { background:var(--accent-ink); color:#fff; border:none; border-radius:10px;
+         padding:10px 14px; font-size:.95rem; cursor:pointer; margin:4px 4px 4px 0; }
+  .btn.sec { background:var(--soft); color:var(--accent-ink); }
+  .btn:disabled { background:var(--soft); color:var(--muted); cursor:default; }
+  input { font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:10px;
+          background:var(--bg); color:var(--fg); width:110px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  label.inline { display:flex; align-items:center; gap:8px; font-size:.9rem; flex-wrap:wrap; }
+  .bigfreq { font-size:2.4rem; font-weight:700; color:var(--accent-ink); font-variant-numeric:tabular-nums; }
+  .live-label { margin:12px 0 0; font-size:.85rem; color:var(--muted); }
+  .live-detail { margin:0; font-size:.9rem; min-height:2.7em; }
+  .settings { margin-top:10px; padding:8px 0; }
+  .settings summary { cursor:pointer; color:var(--accent-ink); font-weight:600; }
+  .settings .row { margin-top:8px; }
+  select { font:inherit; padding:8px; border:1px solid var(--line); border-radius:10px; background:var(--bg); color:var(--fg); }
+  canvas { width:100%; background:var(--card); border:1px solid var(--line); border-radius:12px; }
+  .result { background:var(--soft); border-radius:12px; padding:12px 14px; margin-top:10px; line-height:1.6; }
+  .result strong { color:var(--accent-ink); }
+  .moment { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); }
+  .moment h3 { font-size:1rem; margin:0 0 6px; }
+  .moment p { margin:6px 0; }
+  #plot[data-selectable] { cursor:crosshair; }
+  label.calibration { flex-wrap:nowrap; align-items:flex-start; margin:8px 0 6px; }
+  #useStationary { flex:none; width:16px; height:16px; margin:2px 0 0; accent-color:var(--accent-ink); }
+  .msg { color:var(--gold); font-size:.85rem; min-height:1.2em; margin:6px 0; }
+  .status { font-size:.9rem; margin:8px 0; line-height:1.5; }
+  textarea { width:100%; height:90px; font-family:ui-monospace,monospace; font-size:.8rem;
+             border:1px solid var(--line); border-radius:10px; background:var(--bg); color:var(--fg); }
+  small { color:var(--muted); display:block; margin-top:24px; line-height:1.45; }
+</style>
+</head>
+<body>
+  <a class="back" href="index.html">&larr; Phone Lab</a>
+  <h1>Doppler effect</h1>
+  <p class="lead">One phone plays a steady tone; the other listens. Move either one towards and away from the other to see the pitch shift and signed speed.</p>
+
+  <div class="card">
+    <h2>1 &middot; Setup</h2>
+    <p class="note">You need <strong>two phones</strong> (or one phone and a speaker). Phone A plays a pure tone; phone B runs this page as the listener. Use a quiet room &mdash; talking, fans and wind across the microphone all upset the measurement. Keep the tone between <strong>300 and 5000&nbsp;Hz</strong>; phone microphones are most sensitive there.</p>
+    <div class="row">
+      <label class="inline">Tone frequency (Hz):
+        <input type="number" id="f0In" value="1000" step="any" min="300" max="5000" inputmode="decimal">
+      </label>
+      <label class="inline">Room temperature (&deg;C):
+        <input type="number" id="tIn" value="20" step="any" min="-10" max="40">
+      </label>
+      <label class="inline">Which device moves?
+        <select id="motionIn"><option value="source">Tone source (phone A)</option><option value="receiver">Listening phone (phone B)</option></select>
+      </label>
+    </div>
+    <details class="settings" id="settings">
+      <summary>Frequency range and time step</summary>
+      <div class="row">
+        <label class="inline">Frequency range (&plusmn;Hz):
+          <input type="number" id="rangeIn" value="10" min="1" max="32" step="any" inputmode="decimal">
+        </label>
+        <label class="inline">Time step:
+          <select id="stepIn"><option value="25">25 ms</option><option value="50" selected>50 ms</option><option value="100">100 ms</option><option value="150">150 ms</option></select>
+        </label>
+      </div>
+      <p class="note" id="settingsNote">Shorter steps follow faster changes. Longer steps average over more audio and need a narrower range.</p>
+    </details>
+    <p class="note" style="margin-top:8px">Speed of sound used: <span id="cOut">343.4 m/s</span> at this temperature.</p>
+  </div>
+
+  <div class="card">
+    <h2>2 &middot; Emitter (phone A)</h2>
+    <p class="note">If phone A does not have a tone generator, this page can play the tone itself &mdash; but then use a different phone as the listener, or the sound leaks straight into its own microphone.</p>
+    <div class="row">
+      <button class="btn" id="emitBtn">Play tone on this phone</button>
+      <label class="inline" style="margin-left:4px">Volume:
+        <input type="range" id="vol" min="0" max="100" value="35" style="width:120px;padding:0">
+      </label>
+    </div>
+    <div class="msg" id="eMsg"></div>
+  </div>
+
+  <div class="card">
+    <h2>3 &middot; Listener (phone B)</h2>
+    <p class="note">Keep one phone still and select which phone will move. Press Start recording, then move that phone smoothly towards and away from the other. If calibration is on, keep both still until the app says to move.</p>
+    <label class="inline calibration"><input type="checkbox" id="useStationary" checked><span>Use the first second as the stationary baseline</span></label>
+    <div class="row">
+      <button class="btn" id="listenBtn">Start listening</button>
+      <button class="btn" id="recBtn">Start recording</button>
+      <button class="btn sec" id="stopBtn" disabled>Stop & analyse</button>
+    </div>
+    <p class="live-label">Live speed: + getting closer, &minus; getting farther apart</p>
+    <div class="bigfreq" id="liveSpeed">&mdash;</div>
+    <p class="live-detail"><span id="liveF">&mdash;</span> <span id="liveReference"></span></p>
+    <div class="status" id="status" role="status">Not listening.</div>
+    <canvas id="strip" width="480" height="154" aria-label="Signed speed over the last 12 seconds of recorded data"></canvas>
+  </div>
+
+  <div class="card">
+    <h2>4 &middot; Analyse</h2>
+    <p class="note">Only enter a string length for full circular rotations. Leave it blank for a back-and-forth arm swing.</p>
+    <div class="row" style="margin-bottom:8px">
+      <label class="inline">String length (m, optional):
+        <input type="number" id="LIn" step="any" min="0" placeholder="1.0" style="width:105px">
+      </label>
+    </div>
+    <div id="aOut" class="result" style="display:none" aria-live="polite"></div>
+    <p class="note">Recorded speed: + getting closer, &minus; getting farther apart.</p>
+    <canvas id="plot" width="480" height="300" aria-label="Signed speed over time. To select a time without tapping the graph, use the time field."></canvas>
+    <div class="moment" id="momentPanel" hidden>
+      <h3>Speed at a chosen moment</h3>
+      <p class="note">For mid-swing, film from the side and capture the Start recording tap. Enter the time from that tap to the halfway point in your video, or tap the graph. The microphone cannot identify halfway by itself.</p>
+      <p class="note">For the forearm demo setup, swing the tone source and keep the listening phone roughly level with your elbow, in the plane of the swing and several arm lengths away.</p>
+      <label class="inline">Time on graph (s): <input id="momentTime" type="number" min="0" step="0.01" inputmode="decimal"></label>
+      <p id="momentOut" aria-live="polite"></p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Try it without a second phone</h2>
+    <div class="row">
+      <button class="btn sec" id="demoBtn">Load demo data</button>
+      <button class="btn sec" id="armDemoBtn">Load forearm demo</button>
+      <button class="btn sec" id="clearBtn">Clear everything</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Export</h2>
+    <div class="row">
+      <button class="btn sec" id="csvBtn">Download CSV</button>
+      <button class="btn sec" id="csvShow">Show CSV</button>
+    </div>
+    <textarea id="csvBox" style="display:none;margin-top:8px" readonly></textarea>
+  </div>
+
+  <small>The microphone needs HTTPS (GitHub Pages is fine) and browser permission. Keep one device still. Doppler measures how fast the distance between the two devices changes, not the total speed along a curved path.</small>
+
+<script>
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+  var ctx = null, micStream = null, analyser = null, srcNode = null;
+  var osc = null, oscGain = null;
+  var listening = false, recording = false, samples = [];   // {t, f}
+  var pollId = null;
+  var liveBuf = null;
+  var momentState = null, demoKind = null, recordStart = 0, useStationary = true;
+  var opening = false, kernel = null, trial = null;
+
+  function settings() {
+    return { base:$("f0In").valueAsNumber, range:$("rangeIn").valueAsNumber,
+      ms:+$("stepIn").value, c:speedOfSound(), motion:$("motionIn").value };
+  }
+  function settingsError(cfg) {
+    if (!(cfg.base >= 300 && cfg.base <= 5000)) return "Enter a base frequency between 300 and 5000 Hz.";
+    var limit = 800 / cfg.ms;
+    if (!(cfg.range >= 1 && cfg.range <= limit)) {
+      return "Use a range from 1 to " + (Math.floor(limit * 100) / 100) + " Hz at " + cfg.ms + " ms, or choose a shorter step.";
+    }
+    return "";
+  }
+  function radial(f, base, c, motion) { return c * (f - base) / (motion === "receiver" ? base : f); }
+  function reference(cfg) { return cfg.zero == null ? cfg.base : cfg.zero; }
+  function lockSettings(lock) {
+    ["f0In", "rangeIn", "stepIn", "tIn", "motionIn", "useStationary"].forEach(function (id) { $(id).disabled = lock; });
+  }
+  function validation() {
+    var message = settingsError(settings());
+    $("settingsNote").textContent = message || "Shorter steps follow faster changes. Longer steps average over more audio and need a narrower range.";
+    return message;
+  }
+  ["f0In", "rangeIn", "stepIn"].forEach(function (id) { $(id).addEventListener("input", validation); });
+
+  function speedOfSound() {
+    var T = +$("tIn").value;
+    if (!Number.isFinite($("tIn").valueAsNumber)) T = 20;
+    return 331.3 + 0.606 * T;
+  }
+  $("tIn").addEventListener("input", function () {
+    $("cOut").textContent = speedOfSound().toFixed(1) + " m/s";
+  });
+
+  // ---------- emitter ----------
+  $("emitBtn").addEventListener("click", function () {
+    if (osc) {   // toggle off
+      try { osc.stop(); } catch (e) {}
+      osc = null; oscGain = null;
+      $("emitBtn").textContent = "Play tone on this phone";
+      $("eMsg").textContent = "";
+      return;
+    }
+    try {
+      if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+      if (ctx.state === "suspended") ctx.resume();
+      var f = Math.min(5000, Math.max(300, +$("f0In").value || 1000));
+      osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = f;
+      oscGain = ctx.createGain();
+      oscGain.gain.value = (+$("vol").value || 35) / 100 * 0.5;
+      osc.connect(oscGain).connect(ctx.destination);
+      osc.start();
+      $("emitBtn").textContent = "Stop tone";
+      $("eMsg").textContent = "Playing " + f + " Hz. Use another phone as the listener.";
+    } catch (e) {
+      $("eMsg").textContent = "Could not play a tone here (" + e.name + ").";
+    }
+  });
+  $("vol").addEventListener("input", function () {
+    if (oscGain) oscGain.gain.value = (+this.value || 35) / 100 * 0.5;
+  });
+  $("f0In").addEventListener("change", function () {
+    var f = Math.min(5000, Math.max(300, +this.value || 1000));
+    if (osc) osc.frequency.value = f;
+  });
+
+  // ---------- listener ----------
+  $("listenBtn").addEventListener("click", function () {
+    if (listening) {
+      if (recording) $("stopBtn").click();
+      releaseMic();
+      $("status").textContent = "Microphone off.";
+      return;
+    }
+    openMic();
+  });
+  async function openMic() {
+    if (listening) return true;
+    if (opening) return false;
+    var message = validation();
+    if (message) {
+      $("settings").open = true;
+      $("status").textContent = message;
+      return false;
+    }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      $("status").textContent = "Microphone not supported here \u2014 try the demo data.";
+      return false;
+    }
+    opening = true;
+    $("listenBtn").disabled = true;
+    $("recBtn").disabled = true;
+    try {
+      if (!ctx || ctx.state === "closed") ctx = new (window.AudioContext || window.webkitAudioContext)();
+      if (ctx.state !== "running") ctx.resume().catch(function () {});
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+      });
+      if (ctx.state !== "running") await ctx.resume();
+      srcNode = ctx.createMediaStreamSource(micStream);
+      analyser = ctx.createAnalyser();
+      analyser.fftSize = 16384;
+      liveBuf = new Float32Array(analyser.fftSize);
+      srcNode.connect(analyser);
+      micStream.getAudioTracks().forEach(function (track) {
+        track.addEventListener("ended", function () {
+          if (recording) $("stopBtn").click();
+          releaseMic();
+          $("status").textContent = "The microphone disconnected. Start listening to try again.";
+        });
+      });
+      listening = true;
+      $("recBtn").disabled = false;
+      $("listenBtn").textContent = "Stop listening";
+      $("status").textContent = "Listening. Check the tone, then start recording.";
+      poll();
+      return true;
+    } catch (e) {
+      releaseMic();
+      $("status").textContent = "Microphone unavailable (" + e.name + "). Check HTTPS and permissions, or try the demo data.";
+      return false;
+    } finally {
+      opening = false;
+      $("listenBtn").disabled = false;
+      $("recBtn").disabled = recording;
+    }
+  }
+
+  function releaseMic() {
+    listening = false;
+    clearTimeout(pollId);
+    if (srcNode) srcNode.disconnect();
+    if (micStream) micStream.getTracks().forEach(function (track) { track.stop(); });
+    micStream = srcNode = analyser = liveBuf = kernel = null;
+    $("listenBtn").textContent = "Start listening";
+    $("recBtn").disabled = recording;
+    $("liveSpeed").textContent = $("liveF").textContent = "\u2014";
+    $("liveReference").textContent = "";
+  }
+
+  function poll() {
+    if (!listening) return;
+    var cfg = recording ? trial : settings();
+    var started = performance.now();
+    var problem = settingsError(cfg);
+    var reading = problem || ctx.state !== "running" ? null : estimateTone(cfg);
+    if (recording) {
+      var elapsed = started / 1000 - recordStart;
+      var half = reading ? reading.seconds / 2 : cfg.ms / 2000;
+      if (reading && elapsed >= 2 * half) {
+        var centre = elapsed - half;
+        samples.push({ t:centre, f:reading.f });
+        if (useStationary && centre <= 1) trial.still.push(reading.f);
+      }
+      if (useStationary && trial.zero == null && elapsed > 1.1 && trial.still.length >= 4) {
+        trial.zero = median(trial.still);
+      }
+      if (useStationary && elapsed >= 2 && !trial.prompted) {
+        trial.prompted = true;
+        $("status").textContent = trial.zero == null ?
+          "Move now. Stationary calibration did not lock; using the entered base frequency." : "Move now. Stationary baseline captured.";
+      }
+      drawStrip(elapsed);
+    }
+    var calibrating = recording && useStationary && !trial.prompted;
+    var v = reading ? radial(reading.f, reference(cfg), cfg.c, cfg.motion) : 0;
+    $("liveSpeed").textContent = !reading || calibrating ? "\u2014" : signed(v) + " m/s";
+    $("liveF").textContent = problem || (reading ? reading.f.toFixed(2) + " Hz." : "No clear tone in range.");
+    $("liveReference").textContent = problem ? "" : calibrating ? "Keep both phones still." : "Base: " + reference(cfg).toFixed(2) + " Hz.";
+    pollId = setTimeout(poll, Math.max(4, cfg.ms - (performance.now() - started)));
+  }
+  function signed(v) {
+    return (v >= 0.005 ? "+" : v <= -0.005 ? "\u2212" : "") + Math.abs(v).toFixed(2);
+  }
+  function estimateTone(cfg) {
+    if (!analyser || !analyser.getFloatTimeDomainData) return null;
+    analyser.getFloatTimeDomainData(liveBuf);
+    var sr = ctx.sampleRate, n = Math.min(liveBuf.length >> 1, Math.round(sr * cfg.ms / 2000));
+    if (!kernel || kernel.n !== n || kernel.base !== cfg.base || kernel.sr !== sr) {
+      var cos = new Float64Array(n), sin = new Float64Array(n), weight = new Float64Array(n), sum = 0;
+      for (var j = 0; j < n; j++) {
+        var w = 0.5 - 0.5 * Math.cos(2 * Math.PI * (j + 0.5) / n);
+        var p = 2 * Math.PI * cfg.base * j / sr;
+        cos[j] = w * Math.cos(p); sin[j] = w * Math.sin(p); weight[j] = w; sum += w;
+      }
+      kernel = {n:n, base:cfg.base, sr:sr, cos:cos, sin:sin, weight:weight, sum:sum};
+    }
+    var offset = liveBuf.length - 2 * n;
+    var re1 = 0, im1 = 0, re2 = 0, im2 = 0, energy = 0;
+    for (var i = 0; i < n; i++) {
+      var a = liveBuf[offset + i], b = liveBuf[offset + n + i];
+      re1 += a * kernel.cos[i]; im1 -= a * kernel.sin[i];
+      re2 += b * kernel.cos[i]; im2 -= b * kernel.sin[i];
+      energy += (a * a + b * b) * kernel.weight[i];
+    }
+    if (energy < 2 * kernel.sum * 0.0000001) return null;
+    // Compare the phase in the two Hann-weighted halves, then remove the base-tone rotation.
+    var pBase = 2 * Math.PI * cfg.base * n / sr;
+    var phase = Math.atan2(im2 * re1 - re2 * im1, re2 * re1 + im2 * im1) - pBase;
+    var offsetHz = Math.atan2(Math.sin(phase), Math.cos(phase)) * sr / (2 * Math.PI * n);
+    if (Math.abs(offsetHz) > cfg.range) return null;
+    // Verify that the estimated tone accounts for most of the waveform; reject noise and aliases.
+    var f = cfg.base + offsetHz, omega = 2 * Math.PI * f / sr;
+    var cr = Math.cos(omega), si = Math.sin(omega), re = 1, im = 0, iSum = 0, qSum = 0;
+    for (var k = 0; k < 2 * n; k++) {
+      var x = liveBuf[offset + k] * kernel.weight[k % n];
+      iSum += x * re; qSum += x * im;
+      var next = re * cr - im * si;
+      im = im * cr + re * si; re = next;
+    }
+    if ((iSum * iSum + qSum * qSum) / (kernel.sum * energy) < 0.55) return null;
+    return {f:f, seconds:2 * n / sr};
+  }
+
+  $("recBtn").addEventListener("click", async function () {
+    var message = validation();
+    if (message) {
+      $("settings").open = true;
+      $("status").textContent = message;
+      return;
+    }
+    if (!listening && !(await openMic())) return;
+    samples = []; recording = true;
+    trial = settings();
+    trial.still = [];
+    lockSettings(true);
+    recordStart = performance.now() / 1000;
+    useStationary = $("useStationary").checked;
+    demoKind = null;
+    resetMoment();
+    $("aOut").style.display = "none";
+    $("csvBox").style.display = "none";
+    drawPlot(0, null, null);
+    drawStrip(0);
+    $("recBtn").disabled = true; $("stopBtn").disabled = false;
+    $("status").textContent = useStationary ? "Recording. Keep both phones still for two seconds." :
+      "Recording. Move the " + (trial.motion === "receiver" ? "listening phone" : "tone source") + " towards and away.";
+  });
+  $("stopBtn").addEventListener("click", function () {
+    recording = false;
+    lockSettings(false);
+    $("recBtn").disabled = false; $("stopBtn").disabled = true;
+    $("status").textContent = "Stopped (" + samples.length + " readings).";
+    analyse();
+  });
+
+  // ---------- live strip ----------
+  function drawStrip(end) {
+    var cv = $("strip"), c2 = cv.getContext("2d");
+    c2.clearRect(0, 0, cv.width, cv.height);
+    if (!recording && !samples.length) return;
+    var c = demoKind ? speedOfSound() : trial.c;
+    var motion = demoKind ? "source" : trial.motion;
+    var base = demoKind ? 1000 : reference(trial);
+    var t1 = Math.max(2, end == null ? samples[samples.length - 1].t : end);
+    var t0 = Math.max(0, t1 - 12), start = samples.length;
+    while (start > 0 && samples[start - 1].t >= t0) start--;
+    var span = 0.5, i;
+    for (i = start; i < samples.length; i++) span = Math.max(span, Math.abs(radial(samples[i].f, base, c, motion)) * 1.1);
+    var left = 58, right = cv.width - 12, mid = 70, amplitude = 54;
+    c2.strokeStyle = "#e1d9ea"; c2.lineWidth = 1; c2.beginPath();
+    c2.moveTo(left, mid); c2.lineTo(right, mid); c2.stroke();
+    c2.font = "13px system-ui"; c2.fillStyle = "#6f657e"; c2.textAlign = "right";
+    c2.fillText("0", left - 7, mid + 4);
+    c2.fillText("+" + span.toFixed(1), left - 7, mid - amplitude + 4);
+    c2.fillText("\u2212" + span.toFixed(1), left - 7, mid + amplitude + 4);
+    c2.textAlign = "left"; c2.fillText(t0.toFixed(1) + " s", left, 145);
+    c2.textAlign = "right"; c2.fillText(t1.toFixed(1) + " s", right, 145);
+    c2.save(); c2.translate(12, mid); c2.rotate(-Math.PI / 2); c2.textAlign = "center";
+    c2.fillText("Speed (m/s)", 0, 0); c2.restore();
+    c2.strokeStyle = "#3d6f9e"; c2.lineWidth = 1.5; c2.beginPath();
+    var last = -Infinity, maxGap = demoKind ? 0.22 : Math.max(0.12, trial.ms / 1000 * 2.5);
+    for (i = start; i < samples.length; i++) {
+      var s = samples[i];
+      var x = left + (s.t - t0) / (t1 - t0) * (right - left);
+      var y = mid - radial(s.f, base, c, motion) / span * amplitude;
+      if (s.t - last > maxGap) { c2.moveTo(x, y); c2.lineTo(x + 0.5, y); }
+      else c2.lineTo(x, y);
+      last = s.t;
+    }
+    c2.stroke();
+  }
+
+  // ---------- analysis ----------
+  function median(a) {
+    var s = a.slice().sort(function (x, y) { return x - y; });
+    return s[Math.floor(s.length / 2)];
+  }
+  function resetMoment() {
+    momentState = null;
+    $("momentTime").value = "";
+    $("momentOut").textContent = "";
+    $("momentPanel").hidden = true;
+    $("plot").removeAttribute("data-selectable");
+  }
+  function showMoment() {
+    if (!momentState) return;
+    var input = $("momentTime"), out = $("momentOut"), m = momentState;
+    var t = input.valueAsNumber, selected = null;
+    if (input.value === "") {
+      out.textContent = "Choose a time to see the Doppler speed there.";
+    } else if (t < 0 || t > m.end + 0.005) {
+      out.textContent = "Choose a time from 0 to " + m.end.toFixed(2) + " s.";
+    } else {
+      var nearest = samples.reduce(function (best, s) {
+        return Math.abs(s.t - t) < Math.abs(best.t - t) ? s : best;
+      }, samples[0]);
+      if (Math.abs(nearest.t - t) > 0.15) {
+        out.textContent = "No usable frequency reading close to that time.";
+      } else {
+        selected = nearest;
+        var v = radial(nearest.f, m.baseline, m.c, m.motion);
+        var speed = document.createElement("strong");
+        speed.textContent = Math.abs(v).toFixed(2) + " m/s";
+        out.textContent = m.demo ? "Simulated result: " : "Doppler estimate: ";
+        out.appendChild(speed);
+        out.appendChild(document.createTextNode((Math.abs(v) >= 0.005 ?
+          (v > 0 ? " getting closer" : " getting farther apart") : "") + " at " +
+          nearest.t.toFixed(2) + " s (" + nearest.f.toFixed(2) + " Hz, nearest reading)."));
+      }
+    }
+    drawPlot(m.baseline, m.shift, m.cross, selected);
+  }
+  $("momentTime").addEventListener("input", showMoment);
+  $("plot").addEventListener("click", function (event) {
+    if (!momentState) return;
+    var cv = $("plot"), rect = cv.getBoundingClientRect();
+    var x = (event.clientX - rect.left - cv.clientLeft) / cv.clientWidth * cv.width;
+    var portion = Math.max(0, Math.min(1, (x - 58) / (cv.width - 58 - 12)));
+    $("momentTime").value = (portion * momentState.end).toFixed(2);
+    showMoment();
+  });
+  function analyse() {
+    resetMoment();
+    var out = $("aOut");
+    out.style.display = "block";
+    if (samples.length < 12) {
+      out.textContent = "Not enough audible readings. Try again with the tone closer and record for a few seconds.";
+      return;
+    }
+    var c = demoKind ? speedOfSound() : trial.c;
+    var motion = demoKind ? "source" : trial.motion;
+    var fs = samples.map(function (s) { return s.f; });
+    var calibrated = !demoKind && trial.zero != null;
+    var f0m = demoKind ? 1000 : reference(trial);
+    var moving = calibrated ? samples.filter(function (s) { return s.t >= 2; }) : samples;
+    var devs = moving.map(function (s) { return Math.abs(s.f - f0m); }).sort(function (a, b) { return a - b; });
+    var dMax = devs.length ? devs[Math.ceil(devs.length * 0.9) - 1] : 0;
+    var speedMags = moving.map(function (s) { return Math.abs(radial(s.f, f0m, c, motion)); }).sort(function (a, b) { return a - b; });
+    var nearPeak = speedMags.length ? speedMags[Math.ceil(speedMags.length * 0.9) - 1] : 0;
+    var dur = samples[samples.length - 1].t;
+    var html = (demoKind ? "<strong>Simulated demo data</strong><br>" : "") +
+      "Moving device: <strong>" + (motion === "receiver" ? "listening phone" : "tone source") + "</strong><br>" +
+      "Baseline frequency: <strong>" + f0m.toFixed(2) + " Hz</strong> (" +
+      (demoKind ? "simulated stationary tone" : calibrated ? "median of the first second" : "entered base frequency") + ")<br>";
+    if (devs.length) {
+      html += "Near-peak shift (90th percentile): <strong>&Delta;f = " + dMax.toFixed(2) + " Hz</strong><br>" +
+        "Near-peak speed magnitude: <strong>" + nearPeak.toFixed(2) + " m/s</strong> (whole movement, not a chosen moment)<br>";
+      if (dMax < 0.5) html += "The shift is small; the estimate may be dominated by noise.<br>";
+    } else {
+      html += "No readings after the two-second hold. Record for longer to capture movement.<br>";
+    }
+    if (!demoKind && !calibrated && useStationary) html += "Too few readings in the first second to calibrate.<br>";
+
+    // optional circular-swing analysis
+    var L = +$("LIn").value;
+    var cross = null;
+    if (demoKind === "forearm") {
+      html += "Forearm model: 35 cm radius, 90&deg; arc, 2.00 s round trip, with a distant horizontal microphone. First midpoint: 0.50 s.";
+    } else if (L > 0 && dMax >= 0.5) {
+      var sig = fs.map(function (f) { return f - f0m; });
+      cross = [];
+      for (var i = 1; i < sig.length; i++) {
+        if (sig[i - 1] <= 0 && sig[i] > 0) cross.push(samples[i - 1].t + 0.5 * (samples[i].t - samples[i - 1].t));
+      }
+      if (cross.length >= 3) {
+        var iv = [];
+        for (var k = 1; k < cross.length; k++) iv.push(cross[k] - cross[k - 1]);
+        var med = median(iv);
+        var keep = iv.filter(function (v) { return Math.abs(v - med) / med < 0.35; });
+        var n = keep.length, Trot = keep.reduce(function (a, b) { return a + b; }, 0) / n;
+        var vSwing = 2 * Math.PI * L / Trot;
+        var diff = Math.abs(vSwing - nearPeak) / nearPeak * 100;
+        html += "One full rotation: <strong>T = " + Trot.toFixed(2) + " s</strong> (" + n + " rotations) &rArr; " +
+          "v = 2&pi;L/T = <strong>" + vSwing.toFixed(2) + " m s&#8315;&sup1;</strong> on a " + L.toFixed(2) +
+          " m string<br>Two estimates from the same recording: Doppler gives " + nearPeak.toFixed(2) + " m s&#8315;&sup1;, the circular model gives " +
+          vSwing.toFixed(2) + " m s&#8315;&sup1; &mdash; a " + diff.toFixed(1) + "% difference.";
+      } else {
+        html += "Not enough regular rotations to estimate the period.";
+      }
+    }
+    out.innerHTML = html;
+    momentState = { c:c, baseline:f0m, shift:dMax, end:dur, demo:!!demoKind, cross:cross, motion:motion };
+    $("momentTime").max = dur.toFixed(2);
+    $("momentTime").value = demoKind === "forearm" ? "0.50" : "";
+    $("momentPanel").hidden = false;
+    $("plot").setAttribute("data-selectable", "");
+    showMoment();
+  }
+
+  function drawPlot(f0m, dMax, cross, selected) {
+    var cv = $("plot"), c2 = cv.getContext("2d");
+    var W = cv.width, H = cv.height, mL = 58, mR = 12, mT = 12, mB = 30;
+    c2.clearRect(0, 0, W, H);
+    if (samples.length < 2) return;
+    var t0 = 0, t1 = samples[samples.length - 1].t;
+    var c = momentState ? momentState.c : speedOfSound();
+    var motion = momentState ? momentState.motion : "source";
+    var spread = samples.reduce(function (a, s) { return Math.max(a, Math.abs(radial(s.f, f0m, c, motion)) * 1.1); }, 0.2);
+    var lo = -spread, hi = spread;
+    function X(t) { return mL + (t - t0) / (t1 - t0 || 1) * (W - mL - mR); }
+    function Y(f) { return H - mB - (f - lo) / (hi - lo || 1) * (H - mT - mB); }
+    // grid
+    c2.strokeStyle = "#e1d9ea"; c2.fillStyle = "#6f657e"; c2.lineWidth = 1; c2.font = "13px system-ui";
+    var sx = Math.max(0.5, Math.ceil(t1 / 2.5) / 2), v;
+    c2.textAlign = "center";
+    for (v = 0; v <= t1; v += sx) {
+      c2.beginPath(); c2.moveTo(X(v), mT); c2.lineTo(X(v), H - mB); c2.stroke();
+      c2.fillText(v + " s", X(v), H - mB + 14);
+    }
+    c2.textAlign = "right";
+    for (v = 0; v <= 4; v++) {
+      var fv = spread * (v - 2) / 2;
+      c2.beginPath(); c2.moveTo(mL, Y(fv)); c2.lineTo(W - mR, Y(fv)); c2.stroke();
+      c2.fillText(v === 2 ? "0" : signed(fv), mL - 5, Y(fv) + 4);
+    }
+    // baseline
+    c2.strokeStyle = "#c9a662"; c2.setLineDash([6, 5]);
+    c2.beginPath(); c2.moveTo(mL, Y(0)); c2.lineTo(W - mR, Y(0)); c2.stroke();
+    c2.setLineDash([]);
+    // data
+    c2.fillStyle = "#3d6f9e";
+    samples.forEach(function (s) {
+      c2.beginPath(); c2.arc(X(s.t), Y(radial(s.f, f0m, c, motion)), 2, 0, 7); c2.fill();
+    });
+    // swing crossings
+    if (cross) {
+      c2.fillStyle = "#c9a662";
+      cross.forEach(function (t) {
+        c2.beginPath(); c2.arc(X(t), Y(0), 4, 0, 7); c2.fill();
+      });
+    }
+    if (selected) {
+      var x = X(selected.t);
+      c2.strokeStyle = "#784692"; c2.lineWidth = 2;
+      c2.beginPath(); c2.moveTo(x, mT); c2.lineTo(x, H - mB); c2.stroke();
+      c2.fillStyle = "#784692";
+      c2.beginPath(); c2.arc(x, Y(radial(selected.f, f0m, c, motion)), 4.5, 0, 2 * Math.PI); c2.fill();
+    }
+    c2.fillStyle = "#6f657e"; c2.textAlign = "center";
+    c2.fillText("time", mL + (W - mL - mR) / 2, H - 4);
+    c2.save(); c2.translate(11, mT + (H - mT - mB) / 2); c2.rotate(-Math.PI / 2);
+    c2.fillText("Speed (m/s)", 0, 0); c2.restore();
+  }
+
+  // ---------- demo ----------
+  function stopRecording() {
+    recording = false;
+    lockSettings(false);
+    $("stopBtn").disabled = true;
+    $("recBtn").disabled = opening;
+    $("csvBox").style.display = "none";
+  }
+  $("demoBtn").addEventListener("click", function () {
+    stopRecording();
+    demoKind = "circle";
+    samples = [];
+    var f0 = 1000, c = speedOfSound(), L = 1.0, v = 3.0;
+    var Trot = 2 * Math.PI * L / v;                 // 2.094 s
+    var df = f0 * v / c;                            // 8.75 Hz
+    for (var t = 0; t <= 20; t += 0.1) {
+      samples.push({ t: t, f: f0 + df * Math.sin(2 * Math.PI * t / Trot) + (Math.random() - 0.5) * 0.35 });
+    }
+    $("LIn").value = "1";
+    $("status").textContent = "Demo data loaded \u2014 a tone on a 1 m string swinging at 3 m/s.";
+    drawStrip();
+    analyse();
+  });
+  $("armDemoBtn").addEventListener("click", function () {
+    stopRecording();
+    demoKind = "forearm";
+    samples = [];
+    var c = speedOfSound(), f0 = 1000;
+    for (var i = 0; i <= 100; i++) {
+      var t = i / 10;
+      var angle = Math.PI / 4 * (1 + Math.cos(Math.PI * t));
+      var v = 0.35 * Math.PI * Math.PI / 4 * Math.sin(Math.PI * t) * Math.sin(angle);
+      samples.push({ t:t, f:f0 * c / (c - v) });
+    }
+    $("LIn").value = "";
+    $("status").textContent = "Simulated forearm demo loaded. First mid-swing at 0.50 s.";
+    drawStrip();
+    analyse();
+  });
+  $("clearBtn").addEventListener("click", function () {
+    stopRecording();
+    samples = [];
+    demoKind = null;
+    resetMoment();
+    $("LIn").value = "";
+    $("csvBox").value = "";
+    $("aOut").style.display = "none";
+    ["plot", "strip"].forEach(function (id) {
+      var cv = $(id); cv.getContext("2d").clearRect(0, 0, cv.width, cv.height);
+    });
+    $("liveF").textContent = "\u2014";
+    $("liveSpeed").textContent = "\u2014";
+    $("liveReference").textContent = "";
+    $("status").textContent = listening ? "Listening \u2014 check the readout, then start recording." : "Not listening.";
+  });
+
+  // ---------- CSV ----------
+  function buildCSV() {
+    var lines = ["time_s,frequency_Hz,closing_speed_m_s,moving_device"];
+    var base = momentState ? momentState.baseline : demoKind ? 1000 : trial ? reference(trial) : settings().base;
+    var c = momentState ? momentState.c : demoKind || !trial ? speedOfSound() : trial.c;
+    var motion = momentState ? momentState.motion : !demoKind && trial ? trial.motion : "source";
+    samples.forEach(function (s) {
+      lines.push([s.t.toFixed(3), s.f.toFixed(3), radial(s.f, base, c, motion).toFixed(3), motion].join(","));
+    });
+    return lines.join("\n");
+  }
+  $("csvBtn").addEventListener("click", function () {
+    try {
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([buildCSV()], { type: "text/csv" }));
+      a.download = demoKind ? "doppler-simulated-" + demoKind + ".csv" : "doppler.csv";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+    } catch (e) { $("csvShow").click(); }
+  });
+  $("csvShow").addEventListener("click", function () {
+    var b = $("csvBox"); b.style.display = "block"; b.value = buildCSV(); b.select();
+  });
+})();
+</script>
+</body>
+</html>
